@@ -372,9 +372,13 @@ class SalvageGUI:
             "audio": "off",
         }
         self.source_queue = []
-        self.out_dir = os.path.join(os.path.dirname(os.path.abspath(sys.executable)),
-                                     "Video Fixer Output")
-        os.makedirs(self.out_dir, exist_ok=True)
+        out = os.path.join(os.path.dirname(os.path.abspath(sys.executable)),
+                           "Video Fixer Output")
+        try:
+            os.makedirs(out, exist_ok=True)
+            self.out_dir = out
+        except (OSError, PermissionError):
+            self.out_dir = ""
         self.running = False
         self._check_results = {}
         self._checked_files = set()
@@ -628,6 +632,9 @@ class SalvageGUI:
         """Populate the Report tab from _check_results."""
         if self._report_tree:
             self._report_tree.destroy()
+        # clear all old widgets from the report frame
+        for child in list(self._report_frame.winfo_children()):
+            child.destroy()
 
         if not self._check_results:
             self._notebook.select(0)
@@ -637,8 +644,7 @@ class SalvageGUI:
 
         cols = [
             ("checked", "✓", 45), ("file", "File", 120), ("error", "Error", 90),
-            ("decodable_pct", "%", 35), ("estimated_size_bytes", "Est.", 50),
-            ("verdict", "Verdict", 55),
+            ("decodable_pct", "%", 35), ("good_seconds", "Good (s)", 55),
         ]
         tree = ttk.Treeview(self._report_frame,
                             columns=[c[0] for c in cols],
@@ -669,10 +675,10 @@ class SalvageGUI:
         self._check_rows_iid = {}
         for path, info in self._check_results.items():
             checked = "☑" if path in self._checked_files else "☐"
-            size = int(info.get("estimated_size_bytes", 0) or 0)
+            gs = info.get("good_seconds", 0)
             vals = [checked, os.path.basename(path), info.get("error", "?"),
-                    str(info.get("decodable_pct", "?")) + "%", human_bytes_short(size),
-                    info.get("verdict", "?")]
+                    f"{info.get('decodable_pct', '?')}%",
+                    f"{gs:.1f}" if isinstance(gs, (int, float)) else str(gs)]
             iid = tree.insert("", "end", values=vals)
             self._check_rows_iid[iid] = path
 
@@ -918,6 +924,8 @@ class SalvageGUI:
                         if rows:
                             self._check_results[src] = rows[0]
                             self._checked_files.add(src)
+                            self.root.after(0, self._refresh_report_table)
+                            self.root.after(0, self._update_estimate)
                 self.root.after(0, self._log,
                     f"[{i}/{total}] check done (exit {proc.returncode})\n")
             except Exception as e:
@@ -1052,15 +1060,12 @@ class SalvageGUI:
         total_s = sum(
             float(self._check_results[p].get("good_seconds", 0) or 0)
             for p in checked)
-        total_bytes = sum(
-            int(self._check_results[p].get("estimated_size_bytes", 0) or 0)
-            for p in checked)
         mins, secs = divmod(int(total_s), 60)
         if mins > 0:
             dur = f"{mins}m{secs:02d}s"
         else:
             dur = f"{secs}s"
-        self.est_label.config(text=f"{len(checked)} checked | {human_bytes_short(total_bytes)} | {dur}")
+        self.est_label.config(text=f"{len(checked)} checked | {dur}")
 
     # ------------------------------------------------------- session persistence
     def _session_path(self):
