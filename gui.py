@@ -1143,8 +1143,7 @@ class SalvageGUI:
         creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
         for i, src in enumerate(queue, 1):
             name = os.path.basename(src)
-            stage = "Checking" if self.opts["mode"] == "check" else "Repairing"
-            self.root.after(0, self._set_status, f"{stage} [{i}/{total}] {name}")
+            self.root.after(0, self._set_status, f"Running [{i}/{total}] {name}")
             report_path = os.path.join(self._report_dir, f"report_{i}.csv")
             report_files.append(report_path)
             cmd = self._build_cmd(src, report_path)
