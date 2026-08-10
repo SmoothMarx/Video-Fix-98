@@ -193,7 +193,7 @@ python3 salvage.py in.mp4 --mode repair --min-freeze 0.5 --margin 0
 | `--crf N` | `20` | Encode quality — **lower is better quality but bigger**. 18 ≈ near-lossless, 23 ≈ standard, 28 ≈ small |
 | `--preset NAME` | `veryfast` | Encode speed/size: `ultrafast` → `veryfast` → `medium` → `slow` → `veryslow` |
 | `--fps N` | `50` | Output frame rate. Should match the source's real rate |
-| `--workdir DIR` | `/tmp` | Temp work directory |
+| `--workdir DIR` | OS temp | Temp work directory |
 | `--force-pass` | off | Run the full frame pass even on sparse files |
 | `--interactive` | off | Walk through every option step by step with explanations |
 | `--report PATH` | *(prompt)* | Write CSV report to PATH without prompting |

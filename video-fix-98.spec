@@ -8,7 +8,7 @@ ONE EXE. Everything the app needs lives inside:
   - tkinter (auto-included)
 
 Build (on Windows / Wine):
-    pyinstaller --clean -y --dist ./dist/windows --workpath /tmp video-fix-98.spec
+    pyinstaller --clean -y --dist ./dist/windows --workpath %TEMP% video-fix-98.spec
 """
 import os
 import glob
