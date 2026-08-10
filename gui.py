@@ -89,7 +89,7 @@ ICON_PATH = os.path.join(_BUNDLE, "assets", "icon.png")
 LOGO_PATH = os.path.join(_BUNDLE, "assets", "logo.png")
 SALVAGE_EXE = os.path.join(_BUNDLE, "salvage.exe")
 
-SPLASH_MS = 2500   # how long the splash shows
+SPLASH_MS = 3000   # how long the splash shows
 WATCH_MS = 1000    # output-monitor refresh interval
 
 VIDEO_EXTS = {".mp4", ".mkv", ".avi", ".mov", ".ts", ".webm",
