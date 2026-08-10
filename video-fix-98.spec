@@ -51,10 +51,10 @@ exe = EXE(
     a.datas,
     [],
     name="Video-Fix-98",
-    debug=False,
+    debug=True,
     bootloader_ignore_signals=False,
     strip=False,
     upx=False,
-    console=False,         # GUI: no console window
+    console=True,           # DIAGNOSTIC: temporarily console mode to see errors
     icon="assets/icon.ico",
 )

@@ -22,6 +22,21 @@ Requires: Python 3 + tkinter, and salvage.py + ffmpeg/ffprobe/untrunc on PATH
 Usage:
     python3 gui.py
 """
+import sys, os as _os
+
+# ---- heartbeat: written as the first executable line to prove that the -----
+# ---- Python interpreter actually started inside the frozen exe -------------
+_hb = _os.path.join(_os.path.dirname(_os.path.abspath(sys.executable)), "vf98-startup.log")
+try:
+    with open(_hb, "w") as _f:
+        _f.write(f"Python started: {sys.version}\n")
+        _f.write(f"executable: {sys.executable}\n")
+        _f.write(f"argv: {sys.argv}\n")
+        _f.write(f"frozen: {getattr(sys, 'frozen', False)}\n")
+        _f.write(f"_MEIPASS: {getattr(sys, '_MEIPASS', 'not set')}\n")
+except Exception:
+    pass
+
 import argparse
 import csv
 import os
