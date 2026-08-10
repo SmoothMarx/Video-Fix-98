@@ -39,6 +39,7 @@ except Exception:
 
 import argparse
 import csv
+import json
 import os
 import subprocess
 import sys
@@ -332,6 +333,21 @@ def center_window(win, parent=None):
     win.geometry(f"+{x}+{y}")
 
 
+def human_bytes_short(n):
+    """Bytes → compact human string: 1.2MB, 340KB, etc."""
+    try:
+        n = int(n)
+    except (TypeError, ValueError):
+        return "-"
+    if n == 0:
+        return "0 B"
+    for unit in ("B", "KB", "MB", "GB"):
+        if n < 1024:
+            return f"{n}{unit}" if unit == "B" else f"{n/1024:.1f}{unit}"
+        n //= 1024
+    return f"{n:.1f}TB"
+
+
 class SalvageGUI:
     def __init__(self, root):
         self.root = root
@@ -358,9 +374,13 @@ class SalvageGUI:
         self.source_queue = []
         self.out_dir = ""
         self.running = False
+        self._check_results = {}
+        self._checked_files = set()
+        self._report_dir = tempfile.mkdtemp(prefix="vf98_reports_")
         self.autoscroll = tk.BooleanVar(value=True)
         self.toggles = {}
         self._build()
+        self._load_session()
 
     def _set_icon(self, win):
         if not os.path.exists(ICON_PATH):
@@ -416,9 +436,11 @@ class SalvageGUI:
             lbl = tk.Label(bottom, text="Video-Fix-98", bg=BG, font=FONT_BOLD)
         lbl.pack(side="left")
 
-        # right cluster: status → Run → Stop
+        # right cluster: estimate → status → Run → Stop
         right = tk.Frame(bottom, bg=BG)
         right.pack(side="right")
+        self.est_label = tk.Label(right, text="", bg=BG, font=FONT, fg="#666666", anchor="e")
+        self.est_label.pack(side="top", fill="x", padx=(0, 4))
         self.status = tk.Label(right, text="Ready", bg=BG, font=FONT, anchor="e")
         self.status.pack(side="top", fill="x", padx=(0, 4), pady=(0, 6))
         self.run_btn = tk.Button(right, text="\u25B6  Run", command=self._run,
@@ -460,6 +482,10 @@ class SalvageGUI:
                   font=FONT, relief="raised", bd=2, padx=6).pack(side="left")
         tk.Button(row2, text="Clear", command=self._clear_queue, bg=BTNFACE,
                   font=FONT, relief="raised", bd=2, padx=6).pack(side="left", padx=(4, 0))
+        self.check_btn = tk.Button(row2, text="Check", command=self._check_all,
+                                   bg="#00A000", fg="#FFFFFF",
+                                   font=FONT_BOLD, relief="raised", bd=2, padx=6)
+        self.check_btn.pack(side="left", padx=(4, 0))
 
     def _build_center_pane(self, parent):
         center = tk.Frame(parent, bg=BG)
@@ -479,6 +505,11 @@ class SalvageGUI:
             lambda: self.opts["fix"], lambda v: self.opts.__setitem__("fix", v)))
         self._add_toggle(pre.widget, "Force full pass (sparse)", None,
                          checked=False)
+        self.view_report_btn = tk.Button(
+            pre.widget, text="View Report", command=self._show_check_report,
+            bg=BTNFACE, font=FONT, relief="raised", bd=2, padx=6, pady=1,
+            state="disabled")
+        self.view_report_btn.pack(fill="x", padx=6, pady=3)
 
         # Processing (incl. preset per user request)
         pro = CategoryBox(cats, " Processing ")
@@ -546,7 +577,7 @@ class SalvageGUI:
         self._build_bottom_bar(center)
 
     def _build_watch_pane(self, parent):
-        box = CategoryBox(parent, " Output monitor ")
+        box = CategoryBox(parent, " Output folder ")
         box.pack(side="left", fill="y", padx=(3, 0))
         w = box.widget
         w.config(width=210)
@@ -607,10 +638,24 @@ class SalvageGUI:
         for idx in reversed(sel):
             self.queue_list.delete(idx)
             del self.source_queue[idx]
+        self._invalidate_check()
 
     def _clear_queue(self):
         self.queue_list.delete(0, "end")
         self.source_queue = []
+        self._invalidate_check()
+
+    def _invalidate_check(self):
+        """Clear cached check results when queue changes."""
+        self._check_results = {}
+        self._checked_files = set()
+        self.view_report_btn.config(state="disabled")
+        self.est_label.config(text="")
+        # remove session file
+        try:
+            os.remove(self._session_path())
+        except OSError:
+            pass
 
     # ----------------------------------------------------------- output
     def _browse_out(self):
@@ -693,11 +738,20 @@ class SalvageGUI:
             return
         if self.running:
             return
+        # Filter to only checked files when check results exist
+        if self._check_results:
+            queue = [p for p in self.source_queue
+                     if p in self._checked_files]
+            if not queue:
+                messagebox.showinfo("Video-Fix-98",
+                    "No files selected for repair.\nCheck files first, then tick the ones to repair.")
+                return
+        else:
+            queue = list(self.source_queue)
         self.running = True
         self.run_btn.config(state="disabled")
         self.stop_btn.pack(side="top", pady=(4, 0))
         self._set_status("Starting...")
-        queue = list(self.source_queue)
         self._report_dir = tempfile.mkdtemp(prefix="vf98_reports_")
         self._log(f"\n--- starting {len(queue)} item(s) ---\n")
         t = threading.Thread(target=self._worker, args=(queue,), daemon=True)
@@ -709,6 +763,237 @@ class SalvageGUI:
             self._proc.terminate()
             self._log("\n--- STOPPED by user ---\n")
             self._set_status("Stopped")
+
+    # ------------------------------------------------------- check workflow
+    def _check_all(self):
+        """Run salvage --mode check on every file in the queue."""
+        if not self.source_queue:
+            messagebox.showerror("Video-Fix-98", "Add source files to the queue first.")
+            return
+        if self.running:
+            return
+        self.running = True
+        self.check_btn.config(state="disabled")
+        self.run_btn.config(state="disabled")
+        self._check_results = {}
+        self._checked_files = set()
+        self._set_status("Checking...")
+        self._log("\n--- checking " + str(len(self.source_queue)) + " file(s) ---\n")
+        t = threading.Thread(target=self._check_worker, daemon=True)
+        t.start()
+
+    def _check_worker(self):
+        creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+        total = len(self.source_queue)
+        for i, src in enumerate(self.source_queue, 1):
+            name = os.path.basename(src)
+            self.root.after(0, self._set_status, f"Checking [{i}/{total}] {name}")
+            self.root.after(0, self._log, f"\n[{i}/{total}] checking {name}...\n")
+            try:
+                proc = subprocess.Popen(
+                    [self._runner(), "--mode", "check", "--report",
+                     os.path.join(self._report_dir, f"check_{i}.csv"), src]
+                    if getattr(sys, "frozen", False)
+                    else [sys.executable, self._tool_path(), "--mode", "check",
+                          "--report", os.path.join(self._report_dir, f"check_{i}.csv"), src],
+                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                    text=True, bufsize=1, creationflags=creationflags)
+                for line in proc.stdout:
+                    self.root.after(0, self._log, line)
+                proc.wait()
+                # parse the CSV
+                csv_path = os.path.join(self._report_dir, f"check_{i}.csv")
+                if os.path.exists(csv_path):
+                    with open(csv_path, newline="", encoding="utf-8") as f:
+                        rows = list(csv.DictReader(f))
+                        if rows:
+                            self._check_results[src] = rows[0]
+                            self._checked_files.add(src)
+                self.root.after(0, self._log,
+                    f"[{i}/{total}] check done (exit {proc.returncode})\n")
+            except Exception as e:
+                self.root.after(0, self._log, f"[{i}/{total}] error: {e}\n")
+        self.root.after(0, self._check_done)
+
+    def _check_done(self):
+        self.running = False
+        self.check_btn.config(state="normal")
+        self.run_btn.config(state="normal")
+        n = len(self._check_results)
+        if n > 0:
+            self.view_report_btn.config(state="normal")
+            self._set_status(f"Check complete: {n} file(s)")
+            self._save_session()
+            self._update_estimate()
+            self._show_check_report()
+        else:
+            self._set_status("Check: no results")
+            self._log("no results — check reports could not be read\n")
+
+    def _show_check_report(self):
+        """Popup table with checkbox column, select-all header, Repair Checked."""
+        if not self._check_results:
+            return
+        # auto-enable all if no selections yet
+        if not self._checked_files:
+            self._checked_files = set(self._check_results.keys())
+
+        win = tk.Toplevel(self.root)
+        win.title("Video-Fix-98 — Check Results")
+        win.configure(bg=BG)
+
+        outer = tk.Frame(win, bg=BG, relief="raised", bd=2)
+        outer.pack(padx=4, pady=4)
+
+        header = tk.Label(outer, text=f"Check Results — {len(self._check_results)} file(s)",
+                          bg=NAVY, fg=TITLE_FG, font=FONT_BOLD, anchor="w", padx=6, pady=3)
+        header.pack(fill="x")
+
+        # select-all checkbox row
+        sel_row = tk.Frame(outer, bg=BG)
+        sel_row.pack(fill="x", padx=4, pady=(4, 0))
+        self._select_all_var = tk.BooleanVar(value=True)
+        cb = tk.Checkbutton(sel_row, text="Select / deselect all",
+                            variable=self._select_all_var, bg=BG,
+                            activebackground=BG, font=FONT,
+                            command=self._toggle_select_all)
+        cb.pack(side="left")
+
+        # table
+        cols = [
+            ("checked", "✓", 30),
+            ("file", "File", 140),
+            ("error", "Error", 110),
+            ("good_seconds", "Good (s)", 55),
+            ("estimated_size_bytes", "Est. Size", 55),
+            ("verdict", "Verdict", 60),
+        ]
+        tree = ttk.Treeview(outer, columns=[c[0] for c in cols],
+                            show="headings", height=min(14, len(self._check_results)))
+        for key, label, width in cols:
+            tree.heading(key, text=label)
+            tree.column(key, width=width, anchor="center" if key != "file" else "w")
+
+        vsb = ttk.Scrollbar(outer, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=vsb.set)
+
+        table_frame = tk.Frame(outer, bg=BG)
+        table_frame.pack(fill="both", expand=True, padx=4, pady=4)
+        tree.pack(side="left", fill="both", expand=True)
+        vsb.pack(side="right", fill="y")
+
+        self._check_rows_iid = {}
+        for path, info in self._check_results.items():
+            checked = "☑" if path in self._checked_files else "☐"
+            size = int(info.get("estimated_size_bytes", 0) or 0)
+            vals = [
+                checked,
+                os.path.basename(path),
+                info.get("error", "?"),
+                info.get("good_seconds", "?"),
+                human_bytes_short(size),
+                info.get("verdict", "?"),
+            ]
+            iid = tree.insert("", "end", values=vals)
+            self._check_rows_iid[iid] = path
+
+        def on_click(event):
+            iid = tree.identify_row(event.y)
+            if not iid:
+                return
+            path = self._check_rows_iid.get(iid)
+            if not path:
+                return
+            if path in self._checked_files:
+                self._checked_files.discard(path)
+            else:
+                self._checked_files.add(path)
+            checked = "☑" if path in self._checked_files else "☐"
+            tree.set(iid, "checked", checked)
+            self._update_estimate()
+
+        tree.bind("<Button-1>", on_click)
+
+        # footer
+        footer = tk.Frame(outer, bg=BG)
+        footer.pack(fill="x", padx=4, pady=(0, 4))
+        tk.Button(footer, text="Repair Checked", command=lambda: [win.destroy(), self._run()],
+                  bg=RUN_GREEN, fg="#FFFFFF", font=FONT_BOLD,
+                  relief="raised", bd=3, padx=16, pady=6,
+                  activebackground="#00B000").pack(side="left")
+        tk.Button(footer, text="Close", command=win.destroy,
+                  bg=BTNFACE, font=FONT, relief="raised", bd=2, padx=12, pady=2).pack(side="right")
+
+        self._check_tree = tree  # keep ref for toggle
+
+        center_window(win, self.root)
+
+    def _toggle_select_all(self):
+        if self._select_all_var.get():
+            self._checked_files = set(self._check_results.keys())
+        else:
+            self._checked_files.clear()
+        if hasattr(self, "_check_tree"):
+            for iid, path in self._check_rows_iid.items():
+                checked = "☑" if path in self._checked_files else "☐"
+                self._check_tree.set(iid, "checked", checked)
+        self._update_estimate()
+
+    def _update_estimate(self):
+        if not self._check_results:
+            self.est_label.config(text="")
+            return
+        checked = [p for p in self._check_results if p in self._checked_files]
+        if not checked:
+            self.est_label.config(text="")
+            return
+        total_s = sum(
+            float(self._check_results[p].get("good_seconds", 0) or 0)
+            for p in checked)
+        total_bytes = sum(
+            int(self._check_results[p].get("estimated_size_bytes", 0) or 0)
+            for p in checked)
+        mins, secs = divmod(int(total_s), 60)
+        if mins > 0:
+            dur = f"{mins}m{secs:02d}s"
+        else:
+            dur = f"{secs}s"
+        self.est_label.config(text=f"{len(checked)} checked | {human_bytes_short(total_bytes)} | {dur}")
+
+    # ------------------------------------------------------- session persistence
+    def _session_path(self):
+        return os.path.join(tempfile.gettempdir(), "vf98_last_check.json")
+
+    def _save_session(self):
+        try:
+            data = {
+                "files": list(self._check_results.keys()),
+                "results": self._check_results,
+                "checked": list(self._checked_files),
+            }
+            with open(self._session_path(), "w") as f:
+                json.dump(data, f)
+        except Exception:
+            pass
+
+    def _load_session(self):
+        try:
+            sp = self._session_path()
+            if not os.path.exists(sp):
+                return
+            with open(sp) as f:
+                data = json.load(f)
+            # results dict needs string keys for JSON round-trip
+            self._check_results = data.get("results", {})
+            self._checked_files = set(data.get("checked", []))
+            # verify files still exist
+            self._checked_files = {p for p in self._checked_files if p in self._check_results}
+            if self._check_results:
+                self.view_report_btn.config(state="normal")
+                self._update_estimate()
+                self._set_status(f"Session loaded: {len(self._check_results)} file(s)")
+        except Exception:
+            pass
 
     def _set_status(self, text):
         self.status.config(text=text)
