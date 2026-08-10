@@ -87,6 +87,30 @@ def run(cmd, timeout=7200):
         return out + "\n" + err + "\nSCAN_TIMEOUT_MARKER\n"
 
 
+def run_with_progress(cmd, total_s, label=""):
+    """Run a command with a real-time progress bar (parses ffmpeg time=).
+
+    Returns (ok, stderr_text) — ok is True if exit code 0."""
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                         text=True, errors="replace")
+    stderr_lines = []
+    last_pct = -1
+    for line in p.stderr:
+        stderr_lines.append(line)
+        m = re.search(r"time=(\d+):(\d+):(\d+\.?\d*)", line)
+        if m and total_s > 0:
+            cur = int(m.group(1)) * 3600 + int(m.group(2)) * 60 + float(m.group(3))
+            pct = min(100, int(cur / total_s * 100))
+            if pct > last_pct:
+                bar = "\u2588" * (pct // 5) + "\u00b7" * (20 - pct // 5)
+                print(f"\r  {bar} {pct:3d}%{label}", end="", flush=True)
+                last_pct = pct
+    p.wait()
+    if last_pct >= 0:
+        print()  # newline after progress bar
+    return p.returncode == 0, "".join(stderr_lines)
+
+
 def human_bytes(n):
     for unit in ("B", "KB", "MB", "GB", "TB"):
         if n < 1024 or unit == "TB":
@@ -541,19 +565,19 @@ def repair_one(path, output_path, args, info):
     cmd += ["-y", output_path]
 
     print(f"  repairing ({args.codec} / {args.container} / audio {args.audio_mode})...")
-    out = run(cmd)
+    ok, stderr_out = run_with_progress(cmd, info["estimated_duration"])
     if not os.path.exists(output_path):
         print("  ERROR: no output produced")
-        print(out[-500:])
+        print(stderr_out[-500:])
         if args.audio_mode == "copy":
             print("  audio 'copy' failed — retrying with audio off")
             cmd2 = [x for x in cmd if x not in ("-an", "-c:a", "copy", "aac",
                                                 "-b:a", "128k")]
             cmd2.insert(cmd2.index("-vf") + 1, "-an")
-            out2 = run(cmd2)
+            ok2, o2 = run_with_progress(cmd2, info["estimated_duration"])
             if not os.path.exists(output_path):
                 print("  ERROR: retry also failed")
-                print(out2[-500:])
+                print(o2[-500:])
                 info["verdict"] = "FAILED"
                 return False
         else:
