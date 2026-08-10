@@ -383,6 +383,7 @@ class SalvageGUI:
         self.toggles = {}
         self._build()
         self._load_session()
+        self.est_label.config(text="")
 
     def _set_icon(self, win):
         if not os.path.exists(ICON_PATH):
@@ -397,7 +398,7 @@ class SalvageGUI:
     # ---------------------------------------------------------------- UI
     def _build(self):
         outer = BeveledFrame(self.root, relief="raised")
-        outer.pack(fill="both", expand=True, padx=4, pady=4)
+        outer.pack(fill="both", expand=True, padx=2, pady=2)
         body = outer.widget
 
         title = tk.Label(body, text="Video-Fix-98  -  Corrupt Video Checker & Repair",
@@ -462,10 +463,8 @@ class SalvageGUI:
 
     def _build_source_pane(self, parent):
         box = CategoryBox(parent, " Source ")
-        box.pack(side="left", fill="y", padx=(0, 3))
+        box.pack(side="left", fill="both", expand=True)
         w = box.widget
-        w.config(width=200)
-        w.pack_propagate(False)
 
         row = tk.Frame(w, bg=BG)
         row.pack(fill="x", padx=4, pady=4)
@@ -577,8 +576,9 @@ class SalvageGUI:
         self.log.pack(side="left", fill="both", expand=True, padx=(2, 0))
         self._notebook.add(log_frame, text="Progress Log")
 
-        # Report tab (populated after Check)
+        # Report tab (always visible)
         self._build_report_section(self._notebook)
+        self._notebook.add(self._report_frame, text="Report")
 
         # progress bar — native green, below the log, in center column
         style = ttk.Style()
@@ -592,10 +592,8 @@ class SalvageGUI:
 
     def _build_watch_pane(self, parent):
         box = CategoryBox(parent, " Output folder ")
-        box.pack(side="left", fill="y", padx=(3, 0))
+        box.pack(side="left", fill="both", expand=True)
         w = box.widget
-        w.config(width=210)
-        w.pack_propagate(False)
 
         row = tk.Frame(w, bg=BG)
         row.pack(fill="x", padx=4, pady=4)
@@ -637,15 +635,9 @@ class SalvageGUI:
             self._report_tree.destroy()
 
         if not self._check_results:
-            # hide report tab — show only log
-            tabs = self._notebook.tabs()
-            if len(tabs) > 1:
-                self._notebook.forget(1)
+            self._notebook.select(0)
             return
 
-        # ensure report tab exists
-        if len(self._notebook.tabs()) == 1:
-            self._notebook.add(self._report_frame, text="Report")
         self._notebook.select(1)  # switch to report tab
 
         cols = [
