@@ -46,7 +46,6 @@ import sys
 import tempfile
 import threading
 import traceback
-import urllib.request
 
 # ---- early crash guard (catches import-time failures) ---------------------
 def _vf98_early_crash():
@@ -382,6 +381,7 @@ class SalvageGUI:
         except (OSError, PermissionError):
             self.out_dir = ""
         self.running = False
+        self._stopping = False
         self._check_results = {}
         self._checked_files = set()
         self._report_dir = tempfile.mkdtemp(prefix="vf98_reports_")
@@ -479,8 +479,6 @@ class SalvageGUI:
         self.queue_list = tk.Listbox(w, bg=SUNKEN_BG, relief="sunken", bd=2,
                                       font=("Courier", 10), selectmode="extended")
         self.queue_list.pack(fill="both", expand=True, padx=4, pady=2)
-        # drag-and-drop support (enabled if tkdnd is available)
-        self._enable_dnd(self.queue_list, self._queue_add)
 
         row2 = tk.Frame(w, bg=BG)
         row2.pack(fill="x", padx=4, pady=4)
@@ -623,15 +621,13 @@ class SalvageGUI:
         self.watch_count = tk.Label(w, text="0 files", bg=BG, font=FONT, anchor="w")
         self.watch_count.pack(fill="x", padx=6, pady=(0, 4))
 
-        # Help | About | Quit — equidistant across sidebar width
+        # Help | Exit — equidistant across sidebar width
         help_row = tk.Frame(w, bg=BG)
         help_row.pack(fill="x", padx=4, pady=(4, 4))
         help_row.grid_columnconfigure(0, weight=1, uniform="h")
         help_row.grid_columnconfigure(1, weight=1, uniform="h")
-        help_row.grid_columnconfigure(2, weight=1, uniform="h")
         for i, (label, cb) in enumerate((("Help", self._help),
-                                          ("About", self._about),
-                                          ("Quit", self.root.destroy))):
+                                          ("Exit \U0001F6AA", self.root.destroy))):
             tk.Button(help_row, text=label, bg=BTNFACE, font=FONT, relief="raised",
                       bd=2, padx=4, command=cb).grid(row=0, column=i, sticky="ew", padx=1)
 
@@ -725,26 +721,6 @@ class SalvageGUI:
             self._update_estimate()
         tree.bind("<ButtonRelease-1>", on_hdr, add="+")
         self._report_tree = tree
-
-    def _enable_dnd(self, widget, add_callback):
-        """Enable drag-and-drop file acceptance if tkdnd is available."""
-        try:
-            self.root.tk.call("package", "require", "tkdnd")
-            widget.tk.call("dnd", "bindtarget", widget, "text/uri-list",
-                           "<Drop:DND_Files>", "::hermes::dnd_handler")
-            self._dnd_cb = add_callback
-            def _dnd_handler(*args):
-                data = self.root.tk.call("dnd", "get", "text/uri-list")
-                for item in data.split():
-                    path = item.strip("{}")
-                    if path.startswith("file://"):
-                        from urllib.request import url2pathname
-                        path = url2pathname(path.replace("file://", ""))
-                    if os.path.exists(path):
-                        self._dnd_cb(path)
-            self.root.tk.createcommand("::hermes::dnd_handler", _dnd_handler)
-        except Exception:
-            pass  # tkdnd not available — drag-and-drop disabled silently
 
     def _add_toggle(self, parent, label, factory, checked=False):
         if factory is None:
@@ -904,10 +880,10 @@ class SalvageGUI:
 
     def _stop(self):
         """Terminate the running salvage process."""
+        self._stopping = True
         if hasattr(self, "_proc") and self._proc and self._proc.poll() is None:
             self._proc.terminate()
             self._log("\n--- STOPPED by user ---\n")
-            self._set_status("Stopped")
 
     # ------------------------------------------------------- check workflow
     def _check_all(self):
@@ -918,6 +894,7 @@ class SalvageGUI:
         if self.running:
             return
         self.running = True
+        self._stopping = False
         self.check_btn.config(state="disabled")
         self.run_btn.config(state="disabled")
         self._check_results = {}
@@ -934,6 +911,8 @@ class SalvageGUI:
         creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
         total = len(self.source_queue)
         for i, src in enumerate(self.source_queue, 1):
+            if self._stopping:
+                break
             name = os.path.basename(src)
             self.root.after(0, self._set_status, f"Checking [{i}/{total}] {name}")
             self.root.after(0, self._log, f"\n[{i}/{total}] checking {name}...\n")
@@ -943,9 +922,10 @@ class SalvageGUI:
                      os.path.join(self._report_dir, f"check_{i}.csv"), src]
                     if getattr(sys, "frozen", False)
                     else [sys.executable, self._tool_path(), "--gui", "--mode", "check",
-                          "--report", os.path.join(self._report_dir, f"check_{i}.csv"), src],
+                      "--report", os.path.join(self._report_dir, f"check_{i}.csv"), src],
                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                     text=True, bufsize=1, creationflags=creationflags)
+                self._proc = proc
                 for line in proc.stdout:
                     if line.startswith("VF98PCT:"):
                         try:
@@ -1201,6 +1181,8 @@ class SalvageGUI:
         # CREATE_NO_WINDOW on Windows — suppresses salvage.exe console popup
         creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
         for i, src in enumerate(queue, 1):
+            if self._stopping:
+                break
             name = os.path.basename(src)
             self.root.after(0, self._set_status, f"Running [{i}/{total}] {name}")
             report_path = os.path.join(self._report_dir, f"report_{i}.csv")
