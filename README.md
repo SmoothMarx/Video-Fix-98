@@ -1,8 +1,10 @@
-# 🎬 Salvage — Corrupt Video Checker & Repair Tool
+# <img src="assets/icon.png" width="28">  Video-Fix-98 — Corrupt Video Checker & Repair Tool
 
-> *"Read the datastream, keep every good frame, drop the lies."*
+<p align="center">
+  <img src="assets/logo.png" width="340" alt="Video-Fix-98 logo">
+</p>
 
-**Salvage** is a small, self-contained tool that rescues video files damaged by
+**Video-Fix-98** is a small, self-contained tool that rescues video files damaged by
 corruption, truncation, or broken index structures. It reads the file the way a
 player would — frame by frame, beginning to end — finds the stretches that are
 frozen or broken, and rebuilds a clean, continuous, playable video containing
