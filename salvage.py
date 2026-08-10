@@ -629,19 +629,23 @@ def write_csv(path, results):
     print(f"report saved: {path}")
 
 
+def resolve_output_path(input_path, proposed_path):
+    """Return a path that doesn't already exist and won't overwrite the source.
+    Appends _2, _3, etc. to the basename until a free name is found."""
+    path = proposed_path
+    base, ext = os.path.splitext(path)
+    n = 2
+    while os.path.exists(path) or os.path.abspath(path) == os.path.abspath(input_path):
+        path = f"{base}_{n}{ext}"
+        n += 1
+    if path != proposed_path:
+        print(f"  NOTE: output path exists — using '{os.path.basename(path)}' instead")
+    return path
+
+
 def safe_output_path(input_path, out_dir, fname, args):
-    """Ensure the resolved output path NEVER equals the input path.
-    If the user's chosen name would overwrite the source, auto-append
-    '_fixed' to the basename (with a friendly note)."""
     out = os.path.join(out_dir, fname)
-    if os.path.abspath(out) == os.path.abspath(input_path):
-        base = os.path.splitext(os.path.basename(fname))[0]
-        ext = os.path.splitext(fname)[1]
-        safe = os.path.join(out_dir, base + "_fixed" + ext)
-        print(f"  NOTE: output name would overwrite the source — "
-              f"using '{os.path.basename(safe)}' instead")
-        return safe
-    return out
+    return resolve_output_path(input_path, out)
 
 
 def dispatch_fix(path, output_path, args, info):
@@ -866,7 +870,8 @@ def main():
             ok = True
             if args.mode == "repair":
                 base = os.path.splitext(os.path.basename(v))[0]
-                out_path = os.path.join(out_dir, base + "_salvaged." + args.container)
+                out_path = resolve_output_path(v,
+                    os.path.join(out_dir, base + "_salvaged." + args.container))
                 ok = dispatch_fix(v, out_path, args, info)
             results.append(info)
         print(f"\n=== BATCH SUMMARY ({len(results)} files, mode={args.mode}) ===")
