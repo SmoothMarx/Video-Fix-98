@@ -529,6 +529,10 @@ class SalvageGUI:
         sb.pack(side="right", fill="y")
         self.log.pack(side="left", fill="both", expand=True, padx=(2, 0))
 
+        # progress bar — visible only during processing
+        self.progress = ttk.Progressbar(lf, mode="determinate", maximum=100)
+        # packed below the log, initially hidden
+
         # bottom bar lives INSIDE the center column (sidebars span full height)
         self._build_bottom_bar(center)
 
@@ -633,6 +637,7 @@ class SalvageGUI:
 
     def _build_cmd(self, src, report_path=None):
         cmd = [self._runner()] if getattr(sys, "frozen", False) else [sys.executable, self._tool_path()]
+        cmd += ["--gui"]
         cmd += [src]
         cmd += ["--mode", self.opts["mode"]]
         if self.opts["mode"] == "repair":
@@ -689,6 +694,11 @@ class SalvageGUI:
         total = len(queue)
         ok = 0
         report_files = []
+        # Show progress bar
+        self.root.after(0, lambda: self.progress.pack(side="bottom", fill="x", padx=2))
+        self.root.after(0, lambda: self.progress.configure(value=0))
+        # CREATE_NO_WINDOW on Windows — suppresses salvage.exe console popup
+        creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
         for i, src in enumerate(queue, 1):
             name = os.path.basename(src)
             stage = "Checking" if self.opts["mode"] == "check" else "Repairing"
@@ -701,15 +711,24 @@ class SalvageGUI:
             try:
                 p = subprocess.Popen(
                     cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                    text=True, bufsize=1)
+                    text=True, bufsize=1, creationflags=creationflags)
                 for line in p.stdout:
-                    self.root.after(0, self._log, line)
+                    if line.startswith("VF98PCT:"):
+                        try:
+                            pct = int(line.split(":")[1])
+                            self.root.after(0, lambda v=pct: self.progress.configure(value=v))
+                        except (ValueError, IndexError):
+                            pass
+                    else:
+                        self.root.after(0, self._log, line)
                 p.wait()
                 if p.returncode == 0:
                     ok += 1
                 self.root.after(0, self._log, f"[{i}/{total}] exit {p.returncode}\n")
             except Exception as e:
                 self.root.after(0, self._log, f"[{i}/{total}] error: {e}\n")
+        # Hide progress bar
+        self.root.after(0, self.progress.pack_forget)
         rows = self._collect_reports(report_files)
         msg = f"Done: {ok}/{total} succeeded"
         self.root.after(0, self._done, msg, rows)

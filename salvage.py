@@ -87,9 +87,10 @@ def run(cmd, timeout=7200):
         return out + "\n" + err + "\nSCAN_TIMEOUT_MARKER\n"
 
 
-def run_with_progress(cmd, total_s, label=""):
+def run_with_progress(cmd, total_s, label="", gui=False):
     """Run a command with a real-time progress bar (parses ffmpeg time=).
 
+    When gui=True, outputs VF98PCT:<pct> lines for the GUI to parse.
     Returns (ok, stderr_text) — ok is True if exit code 0."""
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                          text=True, errors="replace")
@@ -102,9 +103,12 @@ def run_with_progress(cmd, total_s, label=""):
             cur = int(m.group(1)) * 3600 + int(m.group(2)) * 60 + float(m.group(3))
             pct = min(100, int(cur / total_s * 100))
             if pct > last_pct:
-                bar = "\u2588" * (pct // 5) + "\u00b7" * (20 - pct // 5)
-                print(f"\r  {bar} {pct:3d}%{label}", end="", flush=True)
                 last_pct = pct
+                if gui:
+                    print(f"VF98PCT:{pct}")
+                else:
+                    bar = "\u2588" * (pct // 5) + "\u00b7" * (20 - pct // 5)
+                    print(f"\r  {bar} {pct:3d}%{label}", end="", flush=True)
     p.wait()
     if last_pct >= 0:
         print()  # newline after progress bar
@@ -565,7 +569,7 @@ def repair_one(path, output_path, args, info):
     cmd += ["-y", output_path]
 
     print(f"  repairing ({args.codec} / {args.container} / audio {args.audio_mode})...")
-    ok, stderr_out = run_with_progress(cmd, info["estimated_duration"])
+    ok, stderr_out = run_with_progress(cmd, info["estimated_duration"], gui=args.gui)
     if not os.path.exists(output_path):
         print("  ERROR: no output produced")
         print(stderr_out[-500:])
@@ -574,7 +578,7 @@ def repair_one(path, output_path, args, info):
             cmd2 = [x for x in cmd if x not in ("-an", "-c:a", "copy", "aac",
                                                 "-b:a", "128k")]
             cmd2.insert(cmd2.index("-vf") + 1, "-an")
-            ok2, o2 = run_with_progress(cmd2, info["estimated_duration"])
+            ok2, o2 = run_with_progress(cmd2, info["estimated_duration"], gui=args.gui)
             if not os.path.exists(output_path):
                 print("  ERROR: retry also failed")
                 print(o2[-500:])
@@ -820,6 +824,8 @@ def main():
     ap.add_argument("--resolution", default="",
                     help="output resolution, e.g. 1280x720 or -2:720 "
                          "(default: keep source)")
+    ap.add_argument("--gui", action="store_true",
+                    help="output VF98PCT:<pct> progress lines (for GUI embedding)")
     args = ap.parse_args()
     args.noise = normalize_noise(args.noise)
 
