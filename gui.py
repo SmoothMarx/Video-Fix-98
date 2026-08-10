@@ -562,12 +562,17 @@ class SalvageGUI:
             ("off", "copy", "aac"),
             lambda: self.opts["audio"], lambda v: self.opts.__setitem__("audio", v)))
 
-        # ---- split area (report + log; reconfigured by toggle) ----
+        # ---- report table (populated after Check) ----
+        self._build_report_section(center)
+
+        # ---- report + log split area ----
+        self._create_log_frame()
+        self._build_report_section()
+
+        # ---- split area (reconfigured by toggle) ----
         self._split_area = tk.Frame(center, bg=BG)
         self._split_area.pack(fill="both", expand=True, padx=4, pady=(2, 2))
-        self._create_log_frame(self._split_area)
         self._log_frame.pack(in_=self._split_area, fill="both", expand=True)
-        self._build_report_section(self._split_area)
 
         # ---- progress bar ----
         style = ttk.Style()
@@ -638,9 +643,9 @@ class SalvageGUI:
         sb.pack(side="right", fill="y")
         self.log.pack(side="left", fill="both", expand=True, padx=(2, 0))
 
-    def _build_report_section(self, parent):
+    def _build_report_section(self, parent=None):
         """Set up report data structure (frame created on refresh)."""
-        self._report_frame = tk.Frame(parent, bg=BG)
+        self._report_frame = tk.Frame(self._split_area, bg=BG)
         self._report_tree = None
         self._report_visible = True
 
