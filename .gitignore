@@ -1,0 +1,21 @@
+# test artifacts
+_test/
+_trash/
+*.mp4
+*.mkv
+*.webm
+*.mov
+*.avi
+*.ts
+*.m4v
+*.flv
+*.wmv
+*.mpg
+*.mpeg
+*.m2ts
+
+# temp / cache
+__pycache__/
+*.pyc
+*.csv
+/tmp/
