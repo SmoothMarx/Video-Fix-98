@@ -1,0 +1,88 @@
+name: Build Windows exes
+
+# Trigger: push a tag like v1.2.0-win or a release publish. Two self-contained
+# exes are produced and attached to the release:
+#   - salvage.exe         CLI tool (bundles ffmpeg/ffprobe/untrunc)
+#   - Video-Fix-98.exe    GUI app (bundles salvage.exe + assets + icon)
+on:
+  push:
+    tags:
+      - "v*-win"
+  release:
+    types: [published]
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PyInstaller
+        run: pip install pyinstaller pillow
+
+      # --- Windows binaries ---------------------------------------------
+      - name: Download Windows ffmpeg (gyan.dev essentials)
+        shell: bash
+        run: |
+          mkdir -p bin/win
+          curl -L -o ffmpeg.zip \
+            "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
+          unzip -o ffmpeg.zip -d ffmpeg-tmp
+          find ffmpeg-tmp -name "ffmpeg.exe" -exec cp {} bin/win/ \;
+          find ffmpeg-tmp -name "ffprobe.exe" -exec cp {} bin/win/ \;
+
+      - name: Download Windows untrunc (anthwlock fork release)
+        shell: bash
+        run: |
+          curl -sL -o untrunc.zip \
+            "https://github.com/anthwlock/untrunc/releases/latest/download/untrunc_windows_x86_64.zip" \
+            || true
+          if [ -f untrunc.zip ]; then
+            unzip -o untrunc.zip -d untrunc-tmp || true
+            find untrunc-tmp -name "untrunc*.exe" -exec cp {} bin/win/ \;
+          fi
+          ls -la bin/win || echo "no windows untrunc binary found (will warn)"
+
+      - name: List bundled Windows binaries
+        shell: bash
+        run: ls -la bin/win || true
+
+      # --- Build both exes ----------------------------------------------
+      - name: Build salvage.exe
+        run: pyinstaller --clean salvage.spec
+
+      - name: Build Video-Fix-98.exe
+        run: pyinstaller --clean video-fix-98.spec
+
+      - name: Verify exes
+        shell: bash
+        run: |
+          ls -la dist/
+          test -f dist/salvage.exe && echo "salvage.exe OK"
+          test -f dist/Video-Fix-98.exe && echo "Video-Fix-98.exe OK"
+
+      # --- Attach to release --------------------------------------------
+      - name: Attach exes to release
+        if: github.event_name == 'release' || startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          NOTES="Self-contained Windows binaries:
+          - salvage.exe: CLI tool (bundles ffmpeg/ffprobe/untrunc)
+          - Video-Fix-98.exe: GUI app (bundles salvage.exe + assets)
+          Double-click Video-Fix-98.exe to launch."
+          # create a release if we're on a tag that has none yet
+          gh release create "$TAG" \
+            dist/salvage.exe \
+            dist/Video-Fix-98.exe \
+            --title "Windows exes — $TAG" \
+            --notes "$NOTES" \
+            --generate-notes 2>/dev/null || \
+          gh release upload "$TAG" \
+            dist/salvage.exe dist/Video-Fix-98.exe --clobber

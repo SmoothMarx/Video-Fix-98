@@ -23,6 +23,14 @@ import stat
 import subprocess
 import sys
 
+# ---- PyInstaller bootstrap ------------------------------------------------
+# When frozen into an exe, bundled tools (ffmpeg/ffprobe/untrunc) live in
+# sys._MEIPASS; put it on PATH so shutil.which/subprocess can find them.
+if getattr(sys, "frozen", False):
+    _bundle = getattr(sys, "_MEIPASS", os.path.dirname(sys.executable))
+    if _bundle and _bundle not in os.environ.get("PATH", ""):
+        os.environ["PATH"] = _bundle + os.pathsep + os.environ.get("PATH", "")
+
 FREEZE_START_RE = re.compile(r"freeze_start:\s*([0-9.]+)")
 FREEZE_END_RE = re.compile(r"freeze_end:\s*([0-9.]+)")
 
@@ -188,6 +196,32 @@ def error_signature(path):
     return "none detected"
 
 
+def normalize_noise(value):
+    """Accept flexible noise input and return ffmpeg's freezedetect form.
+
+    Understands:
+      60   -> -60dB   (plain number = sensitivity in dB)
+      -60  -> -60dB   (already negative)
+      60dB -> -60dB   (with suffix)
+      -60dB-> -60dB   (ffmpeg-native, passed through)
+    Falls back to the default if the input can't be parsed.
+    """
+    v = str(value).strip()
+    if not v:
+        return "-60dB"
+    if v.startswith("-"):
+        v = v[1:]
+    if v.lower().endswith("db"):
+        v = v[:-2].strip()
+    try:
+        num = float(v)
+    except ValueError:
+        return "-60dB"
+    # guard sanity: -1dB to -100dB range
+    num = max(1.0, min(100.0, abs(num)))
+    return f"-{num:.0f}dB"
+
+
 def find_frozen_pts(path, min_freeze, noise_db):
     """freezedetect pass. Returns (frozen_intervals, raw_log)."""
     out = run(["ffmpeg", "-v", "info", "-i", path,
@@ -209,9 +243,12 @@ def find_frozen_pts(path, min_freeze, noise_db):
     return intervals, out
 
 
-def build_filter(good, fps):
+def build_filter(good, fps, resolution=None):
     terms = "+".join(f"between(t,{s:.2f},{e:.2f})" for (s, e) in good)
-    return f"select='{terms}',setpts=N/({fps}*TB)"
+    chain = f"select='{terms}',setpts=N/({fps}*TB)"
+    if resolution:
+        chain += f",scale={resolution}"
+    return chain
 
 
 def audio_args(mode):
@@ -493,7 +530,7 @@ def repair_one(path, output_path, args, info):
         info["verdict"] = "nothing salvageable"
         return False
 
-    vf = build_filter(good, args.fps)
+    vf = build_filter(good, args.fps, getattr(args, "resolution", None))
     cmd = ["ffmpeg", "-v", "error", "-i", path, "-vf", vf,
            "-c:v", CODECS[args.codec], "-preset", args.preset,
            "-crf", str(args.crf), "-r", str(args.fps)]
@@ -740,7 +777,8 @@ def main():
     ap.add_argument("--min-freeze", type=float, default=2.0,
                     help="min freeze length to trim, seconds (default 2.0)")
     ap.add_argument("--noise", default="-60dB",
-                    help="freezedetect noise threshold (default -60dB)")
+                    help="freezedetect noise threshold; accepts 60, -60, 60dB, "
+                         "or -60dB (default -60dB)")
     ap.add_argument("--margin", type=float, default=1.0,
                     help="safety margin around each freeze, seconds (default 1.0)")
     ap.add_argument("--crf", type=int, default=20,
@@ -749,10 +787,15 @@ def main():
                     help="encoder speed/size preset (default veryfast)")
     ap.add_argument("--fps", type=int, default=50,
                     help="output frame rate (default 50)")
+    ap.add_argument("--resolution", default="",
+                    help="output resolution, e.g. 1280x720 or -2:720 "
+                         "(default: keep source)")
     args = ap.parse_args()
+    args.noise = normalize_noise(args.noise)
 
     if args.interactive:
         args = interactive_config(args)
+        args.noise = normalize_noise(args.noise)
 
     if not args.input:
         print("ERROR: input file or folder is required "

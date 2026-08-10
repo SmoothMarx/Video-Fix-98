@@ -19,3 +19,5 @@ __pycache__/
 *.pyc
 *.csv
 /tmp/
+bin/win/*.exe
+dist/
