@@ -25,15 +25,19 @@ jobs:
         run: pip install pyinstaller pillow
 
       # --- Windows binaries ---------------------------------------------
-      - name: Download Windows ffmpeg (gyan.dev essentials)
+      - name: Download Windows ffmpeg (BtbN GitHub builds)
         shell: bash
         run: |
           mkdir -p bin/win
-          curl -L -o ffmpeg.zip \
-            "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
-          unzip -o ffmpeg.zip -d ffmpeg-tmp
-          find ffmpeg-tmp -name "ffmpeg.exe" -exec cp {} bin/win/ \;
-          find ffmpeg-tmp -name "ffprobe.exe" -exec cp {} bin/win/ \;
+          for i in 1 2 3; do
+            curl -L --retry 3 -o ffmpeg.zip \
+              "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-gpl.zip" \
+              && break
+            sleep 10
+          done
+          unzip -o ffmpeg.zip
+          find ffmpeg-master-latest-win64-gpl -name "ffmpeg.exe" -exec cp {} bin/win/ \;
+          find ffmpeg-master-latest-win64-gpl -name "ffprobe.exe" -exec cp {} bin/win/ \;
 
       - name: Download Windows untrunc (anthwlock fork release)
         shell: bash
