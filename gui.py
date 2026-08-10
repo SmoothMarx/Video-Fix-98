@@ -46,6 +46,7 @@ import sys
 import tempfile
 import threading
 import traceback
+import urllib.request
 
 # ---- early crash guard (catches import-time failures) ---------------------
 def _vf98_early_crash():
@@ -442,6 +443,7 @@ class SalvageGUI:
         else:
             lbl = tk.Label(bottom, text="Video-Fix-98", bg=BG, font=FONT_BOLD)
         lbl.pack(side="left")
+        lbl.bind("<Button-1>", lambda e: self._about())
         tk.Frame(bottom, bg=BG).pack(side="left", fill="x", expand=True)
 
         # right cluster: Run → Stop
@@ -475,8 +477,10 @@ class SalvageGUI:
                   font=FONT, relief="raised", bd=2, padx=4).pack(side="left", padx=(4, 0))
 
         self.queue_list = tk.Listbox(w, bg=SUNKEN_BG, relief="sunken", bd=2,
-                                     font=("Courier", 10), selectmode="extended")
+                                      font=("Courier", 10), selectmode="extended")
         self.queue_list.pack(fill="both", expand=True, padx=4, pady=2)
+        # drag-and-drop support (enabled if tkdnd is available)
+        self._enable_dnd(self.queue_list, self._queue_add)
 
         row2 = tk.Frame(w, bg=BG)
         row2.pack(fill="x", padx=4, pady=4)
@@ -614,7 +618,7 @@ class SalvageGUI:
         self.watch_dir_lbl.pack(side="left", padx=(4, 0), fill="x", expand=True)
 
         self.watch_list = tk.Listbox(w, bg=SUNKEN_BG, relief="sunken", bd=2,
-                                     font=("Courier", 10), selectmode="single")
+                                     font=("Courier", 10), selectmode="extended")
         self.watch_list.pack(fill="both", expand=True, padx=4, pady=2)
         self.watch_count = tk.Label(w, text="0 files", bg=BG, font=FONT, anchor="w")
         self.watch_count.pack(fill="x", padx=6, pady=(0, 4))
@@ -721,6 +725,26 @@ class SalvageGUI:
             self._update_estimate()
         tree.bind("<ButtonRelease-1>", on_hdr, add="+")
         self._report_tree = tree
+
+    def _enable_dnd(self, widget, add_callback):
+        """Enable drag-and-drop file acceptance if tkdnd is available."""
+        try:
+            self.root.tk.call("package", "require", "tkdnd")
+            widget.tk.call("dnd", "bindtarget", widget, "text/uri-list",
+                           "<Drop:DND_Files>", "::hermes::dnd_handler")
+            self._dnd_cb = add_callback
+            def _dnd_handler(*args):
+                data = self.root.tk.call("dnd", "get", "text/uri-list")
+                for item in data.split():
+                    path = item.strip("{}")
+                    if path.startswith("file://"):
+                        from urllib.request import url2pathname
+                        path = url2pathname(path.replace("file://", ""))
+                    if os.path.exists(path):
+                        self._dnd_cb(path)
+            self.root.tk.createcommand("::hermes::dnd_handler", _dnd_handler)
+        except Exception:
+            pass  # tkdnd not available — drag-and-drop disabled silently
 
     def _add_toggle(self, parent, label, factory, checked=False):
         if factory is None:
@@ -1406,44 +1430,27 @@ class SalvageGUI:
         win = tk.Toplevel(self.root)
         win.title(f"Video-Fix-98 Help - v{VERSION}")
         win.configure(bg=BG)
-        win.resizable(False, False)
+        win.resizable(True, True)
+        win.geometry("620x520")
 
         outer = tk.Frame(win, bg=BG, relief="raised", bd=2)
-        outer.pack(padx=4, pady=4)
+        outer.pack(fill="both", expand=True, padx=4, pady=4)
 
         header = tk.Label(outer, text=f"Video-Fix-98  v{VERSION}  -  Help",
                           bg=NAVY, fg=TITLE_FG, font=FONT_BOLD, anchor="w",
                           padx=6, pady=3)
         header.pack(fill="x")
 
-        intro = tk.Label(outer, text="All variables explained:",
-                         bg=BG, fg="#000000", font=FONT_BOLD, anchor="w")
-        intro.pack(fill="x", padx=6, pady=(4, 0))
-
-        # scrollable canvas of labels (no text box)
-        wrap = tk.Frame(outer, bg=BG)
-        wrap.pack(fill="both", expand=True, padx=6, pady=4)
-        canvas = tk.Canvas(wrap, bg=BG, highlightthickness=0, width=440,
-                           height=240)
-        sb = tk.Scrollbar(wrap, orient="vertical", command=canvas.yview)
-        canvas.configure(yscrollcommand=sb.set)
+        text = tk.Text(outer, bg=SUNKEN_BG, relief="sunken", bd=2,
+                       font=("Courier", 9), wrap="word", padx=6, pady=4)
+        sb = tk.Scrollbar(outer, orient="vertical", command=text.yview)
+        text.configure(yscrollcommand=sb.set)
+        text.pack(side="left", fill="both", expand=True)
         sb.pack(side="right", fill="y")
-        canvas.pack(side="left", fill="both", expand=True)
-
-        inner = tk.Frame(canvas, bg=BG)
-        win_id = canvas.create_window((0, 0), window=inner, anchor="nw")
 
         for name, desc in VARIABLE_HELP:
-            tk.Label(inner, text=f"\u2022 {name}:", bg=BG, fg="#000000",
-                     font=FONT_BOLD, anchor="w", justify="left").pack(
-                fill="x", padx=8, pady=(4, 0))
-            tk.Label(inner, text=f"      {desc}", bg=BG, fg="#000000",
-                     font=FONT, anchor="w", justify="left", wraplength=410).pack(
-                fill="x", padx=8)
-
-        def on_configure(_e):
-            canvas.configure(scrollregion=canvas.bbox("all"))
-        inner.bind("<Configure>", on_configure)
+            text.insert("end", f"\u2022 {name}:\n  {desc}\n\n")
+        text.config(state="disabled")
 
         btn = tk.Button(outer, text="Close", command=win.destroy, bg=BTNFACE,
                         font=FONT, relief="raised", bd=2, padx=16, pady=2)
