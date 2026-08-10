@@ -87,7 +87,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 _BUNDLE = getattr(sys, "_MEIPASS", HERE)
 ICON_PATH = os.path.join(_BUNDLE, "assets", "icon.png")
 LOGO_PATH = os.path.join(_BUNDLE, "assets", "logo.png")
-SALVAGE_EXE = os.path.join(_BUNDLE, "salvage.exe")
+_SALVAGE_NAME = "salvage.exe" if sys.platform == "win32" else "salvage"
+SALVAGE_EXE = os.path.join(_BUNDLE, _SALVAGE_NAME)
 
 SPLASH_MS = 3000   # how long the splash shows
 WATCH_MS = 2000    # output-monitor refresh interval
@@ -866,9 +867,9 @@ class SalvageGUI:
         return cmd
 
     def _runner(self):
-        """When frozen, run the bundled salvage.exe directly."""
+        """When frozen, run the bundled salvage executable directly."""
         if getattr(sys, "frozen", False):
-            return SALVAGE_EXE if os.path.exists(SALVAGE_EXE) else "salvage.exe"
+            return SALVAGE_EXE if os.path.exists(SALVAGE_EXE) else "salvage"
         return sys.executable
 
     def _tool_path(self):

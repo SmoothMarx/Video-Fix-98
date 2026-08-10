@@ -1,0 +1,14 @@
+version: "3.8"
+
+services:
+  video-fix-98:
+    build: .
+    ports:
+      - "6080:6080"
+    environment:
+      - DISPLAY=:99
+      - RESOLUTION=1280x800
+    volumes:
+      - ./input:/input:ro    # drop files here
+      - ./output:/output     # repaired files land here
+    restart: unless-stopped
