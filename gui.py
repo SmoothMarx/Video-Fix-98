@@ -372,7 +372,8 @@ class SalvageGUI:
             "audio": "off",
         }
         self.source_queue = []
-        self.out_dir = ""
+        self.out_dir = os.path.join(os.path.dirname(os.path.abspath(sys.executable)),
+                                     "Video Fixer Output")
         self.running = False
         self._check_results = {}
         self._checked_files = set()
@@ -403,12 +404,20 @@ class SalvageGUI:
                          anchor="w", padx=6, pady=3)
         title.pack(fill="x", pady=(0, 6))
 
-        panes = tk.Frame(body, bg=BG)
+        panes = tk.PanedWindow(body, orient=tk.HORIZONTAL, bg=BG, sashwidth=4)
         panes.pack(fill="both", expand=True, padx=2, pady=2)
 
-        self._build_source_pane(panes)
-        self._build_center_pane(panes)
-        self._build_watch_pane(panes)
+        source_frame = tk.Frame(panes, bg=BG)
+        panes.add(source_frame, width=200, minsize=100)
+        self._build_source_pane(source_frame)
+
+        center_frame = tk.Frame(panes, bg=BG)
+        panes.add(center_frame, stretch="always")
+        self._build_center_pane(center_frame)
+
+        watch_frame = tk.Frame(panes, bg=BG)
+        panes.add(watch_frame, width=230, minsize=120)
+        self._build_watch_pane(watch_frame)
 
 
     def _build_bottom_bar(self, parent):
@@ -587,7 +596,8 @@ class SalvageGUI:
         row.pack(fill="x", padx=4, pady=4)
         tk.Button(row, text="Browse...", command=self._browse_out, bg=BTNFACE,
                   font=FONT, relief="raised", bd=2, padx=6).pack(side="left")
-        self.watch_dir_lbl = tk.Label(row, text="(not set)", bg=BG, font=FONT,
+        default_name = os.path.basename(self.out_dir) if self.out_dir else "(not set)"
+        self.watch_dir_lbl = tk.Label(row, text=default_name, bg=BG, font=FONT,
                                       anchor="w")
         self.watch_dir_lbl.pack(side="left", padx=(4, 0), fill="x", expand=True)
 
