@@ -503,15 +503,10 @@ class SalvageGUI:
             lambda: self.opts["fix"], lambda v: self.opts.__setitem__("fix", v)))
         self._add_toggle(pre.widget, "Force full pass (sparse)", None,
                          checked=False)
-        self.view_report_btn = tk.Button(
-            pre.widget, text="View Report", command=self._show_check_report,
-            bg=BTNFACE, font=FONT, relief="raised", bd=2, padx=6, pady=1,
-            state="disabled")
-        self.view_report_btn.pack(fill="x", padx=6, pady=3)
         self.import_btn = tk.Button(
             pre.widget, text="Import", command=self._import_session,
             bg=BTNFACE, font=FONT, relief="raised", bd=2, padx=6, pady=1)
-        self.import_btn.pack(fill="x", padx=6, pady=(0, 3))
+        self.import_btn.pack(fill="x", padx=6, pady=3)
 
         # Processing (incl. preset per user request)
         pro = CategoryBox(cats, " Processing ")
@@ -663,6 +658,9 @@ class SalvageGUI:
         tk.Button(hdr, text="Repair Checked", command=self._run,
                   bg=RUN_GREEN, fg="#FFFFFF", font=FONT,
                   relief="raised", bd=2, padx=6, pady=1).pack(side="right")
+        tk.Button(hdr, text="Save As...", command=self._save_session_as,
+                  bg=BTNFACE, font=FONT, relief="raised",
+                  bd=2, padx=6, pady=1).pack(side="right", padx=(4, 0))
 
         tree.pack(side="left", fill="both", expand=True, padx=2, pady=2)
         sb.pack(side="right", fill="y", pady=2)
@@ -752,7 +750,6 @@ class SalvageGUI:
         """Clear cached check results when queue changes."""
         self._check_results = {}
         self._checked_files = set()
-        self.view_report_btn.config(state="disabled")
         self.est_label.config(text="")
         self._refresh_report_table()
         try:
@@ -923,7 +920,6 @@ class SalvageGUI:
         self.run_btn.config(state="normal")
         n = len(self._check_results)
         if n > 0:
-            self.view_report_btn.config(state="normal")
             self._set_status(f"Check complete: {n} file(s)")
             self._save_session()
             self._update_estimate()
@@ -1106,10 +1102,9 @@ class SalvageGUI:
             self._check_results = data.get("results", {})
             self._checked_files = set(data.get("checked", self._check_results.keys()))
             if self._check_results:
-                self.view_report_btn.config(state="normal")
                 self._update_estimate()
                 self._set_status(f"Imported: {len(self._check_results)} file(s)")
-                self._show_check_report()
+                self._refresh_report_table()
         except Exception as e:
             messagebox.showerror("Video-Fix-98", f"Could not import session:\n{e}")
 
@@ -1126,7 +1121,6 @@ class SalvageGUI:
             # verify files still exist
             self._checked_files = {p for p in self._checked_files if p in self._check_results}
             if self._check_results:
-                self.view_report_btn.config(state="normal")
                 self._update_estimate()
                 self._set_status(f"Session loaded: {len(self._check_results)} file(s)")
         except Exception:
@@ -1167,6 +1161,8 @@ class SalvageGUI:
                             now = _time.time()
                             if now - self._last_progress_update >= 3 or pct >= 100:
                                 self.root.after(0, lambda v=pct: self.progress.configure(value=v))
+                                self.root.after(0, lambda p=pct, n=name: self._set_status(
+                                    f"Running [{i}/{total}] {n} — {p}%"))
                                 self._last_progress_update = now
                         except (ValueError, IndexError):
                             pass

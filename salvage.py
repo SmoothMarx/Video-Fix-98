@@ -354,6 +354,7 @@ def analyze(path, args):
         info["_fix"] = "salvage"
     else:
         info["_fix"] = "remux"
+    info["verdict"] = info.get("error", "CHECKED")
     return info
 
 
