@@ -29,8 +29,28 @@ import subprocess
 import sys
 import tempfile
 import threading
-import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+import traceback
+
+# ---- early crash guard (catches import-time failures) ---------------------
+def _vf98_early_crash():
+    """Write a crash log when we can't even import the rest of the stack."""
+    try:
+        log_path = os.path.join(os.path.dirname(os.path.abspath(sys.executable)),
+                                "vf98-crash.log")
+        with open(log_path, "w") as f:
+            f.write("Video-Fix-98 CRASH (import-time)\n")
+            f.write("=" * 60 + "\n")
+            traceback.print_exc(file=f)
+            f.write("\n" + "=" * 60 + "\n")
+    except Exception:
+        pass
+    sys.exit(1)
+
+try:
+    import tkinter as tk
+    from tkinter import filedialog, messagebox, ttk
+except Exception:
+    _vf98_early_crash()
 
 VERSION = "1.1.0"
 
@@ -918,4 +938,19 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception:
+        crash_log = os.path.join(
+            os.path.dirname(os.path.abspath(sys.executable)),
+            "vf98-crash.log",
+        )
+        with open(crash_log, "w") as f:
+            f.write("Video-Fix-98 crash report (runtime)\n")
+            f.write("=" * 60 + "\n")
+            traceback.print_exc(file=f)
+            f.write("\n" + "=" * 60 + "\n")
+            f.write(f"Python: {sys.version}\n")
+            f.write(f"argv: {sys.argv}\n")
+            f.write(f"_MEIPASS: {getattr(sys, '_MEIPASS', 'not frozen')}\n")
+        sys.exit(1)
