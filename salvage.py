@@ -33,6 +33,7 @@ if getattr(sys, "frozen", False):
 
 FREEZE_START_RE = re.compile(r"freeze_start:\s*([0-9.]+)")
 FREEZE_END_RE = re.compile(r"freeze_end:\s*([0-9.]+)")
+TIME_RE = re.compile(r"time=(\d+):(\d+):(\d+\.\d+)")
 
 VIDEO_EXTS = {".mp4", ".mkv", ".avi", ".mov", ".ts", ".webm",
               ".m4v", ".flv", ".wmv", ".mpg", ".mpeg", ".m2ts"}
@@ -261,7 +262,8 @@ def _freezedetect_with_progress(cmd, total_duration):
         m = TIME_RE.search(line)
         if m:
             try:
-                t = float(m.group(1))
+                h, mi, s = int(m.group(1)), int(m.group(2)), float(m.group(3))
+                t = h * 3600 + mi * 60 + s
                 pct = min(100, int(t / dur_s * 100))
                 if dur_s > 0:
                     print(f"VF98PCT:{pct}", flush=True)
