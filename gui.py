@@ -90,7 +90,7 @@ LOGO_PATH = os.path.join(_BUNDLE, "assets", "logo.png")
 SALVAGE_EXE = os.path.join(_BUNDLE, "salvage.exe")
 
 SPLASH_MS = 3000   # how long the splash shows
-WATCH_MS = 1000    # output-monitor refresh interval
+WATCH_MS = 2000    # output-monitor refresh interval
 
 VIDEO_EXTS = {".mp4", ".mkv", ".avi", ".mov", ".ts", ".webm",
               ".m4v", ".flv", ".wmv", ".mpg", ".mpeg", ".m2ts"}
@@ -389,6 +389,20 @@ class SalvageGUI:
         self._load_session()
         self.est_label.config(text="")
         root.protocol("WM_DELETE_WINDOW", self._on_close)
+
+        # debounced resize — skip layout recalc during drag
+        self._resize_job = None
+        self._resizing = False
+        def _on_resize(event):
+            if not self._resizing:
+                self._resizing = True
+            if self._resize_job is not None:
+                root.after_cancel(self._resize_job)
+            def _settled():
+                self._resizing = False
+                root.update_idletasks()
+            self._resize_job = root.after(50, _settled)
+        root.bind("<Configure>", _on_resize, add="+")
 
     def _on_close(self):
         """Clean up temp files on exit."""
@@ -797,7 +811,7 @@ class SalvageGUI:
             self._watch_refresh()
 
     def _watch_tick(self):
-        if self.out_dir:
+        if not self._resizing and self.out_dir:
             self._watch_refresh()
         self.root.after(WATCH_MS, self._watch_tick)
 
