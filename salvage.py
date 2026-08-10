@@ -632,12 +632,12 @@ def write_csv(path, results):
 
 def resolve_output_path(input_path, proposed_path):
     """Return a path that doesn't already exist and won't overwrite the source.
-    Appends (1), (2), etc. to the basename until a free name is found (Windows style)."""
+    Appends _2, _3, etc. to the basename until a free name is found."""
     path = proposed_path
     base, ext = os.path.splitext(path)
-    n = 1
+    n = 2
     while os.path.exists(path) or os.path.abspath(path) == os.path.abspath(input_path):
-        path = f"{base} ({n}){ext}"
+        path = f"{base}_{n}{ext}"
         n += 1
     if path != proposed_path:
         print(f"  NOTE: output path exists — using '{os.path.basename(path)}' instead")
