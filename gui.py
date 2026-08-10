@@ -68,7 +68,7 @@ try:
 except Exception:
     _vf98_early_crash()
 
-VERSION = "1.1.0"
+VERSION = "1.3.0"
 
 # ---- classic Win9x palette ------------------------------------------------
 BG = "#C0C0C0"           # standard dialog gray
