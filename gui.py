@@ -220,37 +220,6 @@ class SpinFactory:
             var.set(str(self.getter()))
 
 
-class NoiseFactory:
-    """Two buttons (-/+) stepping through noise dB values."""
-    DB_VALUES = ["-10dB", "-20dB", "-30dB", "-40dB", "-50dB", "-60dB", "-70dB", "-80dB", "-90dB"]
-
-    def __init__(self, getter, setter):
-        self.getter = getter
-        self.setter = setter
-
-    def __call__(self, parent):
-        f = tk.Frame(parent, bg=BG)
-        var = tk.StringVar(value=self.getter())
-
-        def step(direction):
-            cur = var.get()
-            try:
-                idx = self.DB_VALUES.index(cur)
-            except ValueError:
-                idx = 5  # default -60dB
-            new_idx = max(0, min(len(self.DB_VALUES) - 1, idx + direction))
-            val = self.DB_VALUES[new_idx]
-            var.set(val)
-            self.setter(val)
-
-        tk.Button(f, text="\u2212", bg=BTNFACE, font=FONT, relief="raised",
-                  bd=2, padx=5, command=lambda: step(1)).pack(side="left")
-        tk.Label(f, textvariable=var, bg=SUNKEN_BG, font=FONT, width=7,
-                 relief="sunken", bd=1).pack(side="left", padx=1)
-        tk.Button(f, text="+", bg=BTNFACE, font=FONT, relief="raised",
-                  bd=2, padx=5, command=lambda: step(-1)).pack(side="left")
-        return f
-
 
 class EntryFactory:
     def __init__(self, getter, setter, width=24):
@@ -385,7 +354,7 @@ class SalvageGUI:
         self.root = root
         root.title("Video-Fix-98")
         root.configure(bg=BG)
-        root.resizable(False, False)
+        root.resizable(True, True)
         self._set_icon(root)
 
         self.opts = {
@@ -395,7 +364,7 @@ class SalvageGUI:
             "preset": "veryfast",
             "min_freeze": 2.0,
             "margin": 1.0,
-            "noise": "-60dB",
+            "noise": "-60",
             "container": "mkv",
             "codec": "h264",
             "fps": 50,
@@ -448,14 +417,16 @@ class SalvageGUI:
         bottom.pack(fill="x", padx=2, pady=(10, 8))
         self._bottom = bottom  # for progress-bar insertion later
 
-        # centered logo (place handles true centering)
+        # left spacer + logo + right spacer → true centering
+        tk.Frame(bottom, bg=BG).pack(side="left", fill="x", expand=True)
         logo = small_logo(self.root, width=96)
         if logo:
             lbl = tk.Label(bottom, image=logo, bg=BG)
             lbl.image = logo
         else:
             lbl = tk.Label(bottom, text="Video-Fix-98", bg=BG, font=FONT_BOLD)
-        lbl.place(relx=0.5, rely=0.5, anchor="center")
+        lbl.pack(side="left")
+        tk.Frame(bottom, bg=BG).pack(side="left", fill="x", expand=True)
 
         # right cluster: estimate → status → Run → Stop
         right = tk.Frame(bottom, bg=BG)
@@ -548,8 +519,10 @@ class SalvageGUI:
         self._add_toggle(pro.widget, "Margin (s)", SpinFactory(
             lambda: self.opts["margin"], lambda v: self.opts.__setitem__("margin", float(v)),
             0.0, 30.0, 0.1))
-        self._add_toggle(pro.widget, "Noise (dB)", NoiseFactory(
-            lambda: self.opts["noise"], lambda v: self.opts.__setitem__("noise", v)))
+        self._add_toggle(pro.widget, "Noise (dB)", SpinFactory(
+            lambda: int(self.opts["noise"]),
+            lambda v: self.opts.__setitem__("noise", str(v)),
+            -90, -10, 10, width=6))
 
         # Output
         out = CategoryBox(cats, " Output ")
@@ -658,6 +631,9 @@ class SalvageGUI:
         hdr.pack(fill="x", padx=2)
         tk.Label(hdr, text=f"Check Results — {len(self._check_results)} file(s)",
                  bg=BG, font=FONT_BOLD).pack(side="left")
+        self._report_visible = True
+        tk.Button(hdr, text="\u25BC", bg=BTNFACE, font=FONT, relief="raised",
+                  bd=1, padx=4, command=self._toggle_report).pack(side="left", padx=(4, 0))
         tk.Button(hdr, text="Repair Checked", command=self._run,
                   bg=RUN_GREEN, fg="#FFFFFF", font=FONT,
                   relief="raised", bd=2, padx=6, pady=1).pack(side="right")
@@ -713,6 +689,22 @@ class SalvageGUI:
             self._update_estimate()
         tree.bind("<ButtonRelease-1>", on_hdr, add="+")
         self._report_tree = tree
+
+    def _toggle_report(self):
+        """Collapse or expand the inline report table."""
+        self._report_visible = not self._report_visible
+        if self._report_tree:
+            if self._report_visible:
+                self._report_tree.pack(side="left", fill="x", padx=2, pady=2)
+                # re-pack the scrollbar too
+                for child in self._report_frame.winfo_children():
+                    if isinstance(child, ttk.Scrollbar):
+                        child.pack(side="right", fill="y", pady=2)
+            else:
+                self._report_tree.pack_forget()
+                for child in self._report_frame.winfo_children():
+                    if isinstance(child, ttk.Scrollbar):
+                        child.pack_forget()
 
     def _add_toggle(self, parent, label, factory, checked=False):
         if factory is None:
