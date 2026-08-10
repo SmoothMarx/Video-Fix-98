@@ -374,6 +374,7 @@ class SalvageGUI:
         self.source_queue = []
         self.out_dir = os.path.join(os.path.dirname(os.path.abspath(sys.executable)),
                                      "Video Fixer Output")
+        os.makedirs(self.out_dir, exist_ok=True)
         self.running = False
         self._check_results = {}
         self._checked_files = set()
@@ -404,8 +405,8 @@ class SalvageGUI:
                          anchor="w", padx=6, pady=3)
         title.pack(fill="x", pady=(0, 6))
 
-        panes = tk.PanedWindow(body, orient=tk.HORIZONTAL, bg=BG, sashwidth=4)
-        panes.pack(fill="both", expand=True, padx=2, pady=2)
+        panes = tk.PanedWindow(body, orient=tk.HORIZONTAL, bg=BG, sashwidth=6)
+        panes.pack(fill="both", expand=True)
 
         source_frame = tk.Frame(panes, bg=BG)
         panes.add(source_frame, width=200, minsize=100)
@@ -552,12 +553,12 @@ class SalvageGUI:
             ("off", "copy", "aac"),
             lambda: self.opts["audio"], lambda v: self.opts.__setitem__("audio", v)))
 
-        # ---- report table (populated after Check) ----
-        self._build_report_section(center)
+        # ---- notebook: Report | Progress Log (same position) ----
+        self._notebook = ttk.Notebook(center)
+        self._notebook.pack(fill="both", expand=True, padx=4, pady=(2, 2))
 
-        # ---- log (realtime) + auto-scroll ----
-        log_frame = BeveledFrame(center, relief="sunken")
-        log_frame.pack(fill="both", expand=True, padx=4, pady=(2, 2))
+        # Log tab
+        log_frame = BeveledFrame(self._notebook, relief="sunken")
         lf = log_frame.widget
 
         log_header = tk.Frame(lf, bg=BG)
@@ -574,6 +575,10 @@ class SalvageGUI:
         self.log.config(yscrollcommand=sb.set)
         sb.pack(side="right", fill="y")
         self.log.pack(side="left", fill="both", expand=True, padx=(2, 0))
+        self._notebook.add(log_frame, text="Progress Log")
+
+        # Report tab (populated after Check)
+        self._build_report_section(self._notebook)
 
         # progress bar — native green, below the log, in center column
         style = ttk.Style()
@@ -627,26 +632,21 @@ class SalvageGUI:
         self._report_tree = None
 
     def _refresh_report_table(self):
-        """Populate or hide the inline report table from _check_results."""
+        """Populate the Report tab from _check_results."""
         if self._report_tree:
             self._report_tree.destroy()
-            self._report_frame.pack_forget()
 
         if not self._check_results:
+            # hide report tab — show only log
+            tabs = self._notebook.tabs()
+            if len(tabs) > 1:
+                self._notebook.forget(1)
             return
 
-        self._report_frame.pack(fill="x", padx=2, pady=(4, 2))
-
-        hdr = tk.Frame(self._report_frame, bg=BG)
-        hdr.pack(fill="x", padx=2)
-        tk.Label(hdr, text=f"Check Results — {len(self._check_results)} file(s)",
-                 bg=BG, font=FONT_BOLD).pack(side="left")
-        self._report_visible = True
-        tk.Button(hdr, text="\u25BC", bg=BTNFACE, font=FONT, relief="raised",
-                  bd=1, padx=4, command=self._toggle_report).pack(side="left", padx=(4, 0))
-        tk.Button(hdr, text="Repair Checked", command=self._run,
-                  bg=RUN_GREEN, fg="#FFFFFF", font=FONT,
-                  relief="raised", bd=2, padx=6, pady=1).pack(side="right")
+        # ensure report tab exists
+        if len(self._notebook.tabs()) == 1:
+            self._notebook.add(self._report_frame, text="Report")
+        self._notebook.select(1)  # switch to report tab
 
         cols = [
             ("checked", "✓", 30), ("file", "File", 120), ("error", "Error", 90),
@@ -662,7 +662,17 @@ class SalvageGUI:
 
         sb = ttk.Scrollbar(self._report_frame, orient="vertical", command=tree.yview)
         tree.configure(yscrollcommand=sb.set)
-        tree.pack(side="left", fill="x", padx=2, pady=2)
+
+        # header with Repair button
+        hdr = tk.Frame(self._report_frame, bg=BG)
+        hdr.pack(fill="x", padx=2, pady=(0, 2))
+        tk.Label(hdr, text=f"Check Results — {len(self._check_results)} file(s)",
+                 bg=BG, font=FONT_BOLD).pack(side="left")
+        tk.Button(hdr, text="Repair Checked", command=self._run,
+                  bg=RUN_GREEN, fg="#FFFFFF", font=FONT,
+                  relief="raised", bd=2, padx=6, pady=1).pack(side="right")
+
+        tree.pack(side="left", fill="both", expand=True, padx=2, pady=2)
         sb.pack(side="right", fill="y", pady=2)
 
         self._check_rows_iid = {}
@@ -699,22 +709,6 @@ class SalvageGUI:
             self._update_estimate()
         tree.bind("<ButtonRelease-1>", on_hdr, add="+")
         self._report_tree = tree
-
-    def _toggle_report(self):
-        """Collapse or expand the inline report table."""
-        self._report_visible = not self._report_visible
-        if self._report_tree:
-            if self._report_visible:
-                self._report_tree.pack(side="left", fill="x", padx=2, pady=2)
-                # re-pack the scrollbar too
-                for child in self._report_frame.winfo_children():
-                    if isinstance(child, ttk.Scrollbar):
-                        child.pack(side="right", fill="y", pady=2)
-            else:
-                self._report_tree.pack_forget()
-                for child in self._report_frame.winfo_children():
-                    if isinstance(child, ttk.Scrollbar):
-                        child.pack_forget()
 
     def _add_toggle(self, parent, label, factory, checked=False):
         if factory is None:
