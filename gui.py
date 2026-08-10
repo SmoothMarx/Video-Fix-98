@@ -220,6 +220,38 @@ class SpinFactory:
             var.set(str(self.getter()))
 
 
+class NoiseFactory:
+    """Two buttons (-/+) stepping through noise dB values."""
+    DB_VALUES = ["-10dB", "-20dB", "-30dB", "-40dB", "-50dB", "-60dB", "-70dB", "-80dB", "-90dB"]
+
+    def __init__(self, getter, setter):
+        self.getter = getter
+        self.setter = setter
+
+    def __call__(self, parent):
+        f = tk.Frame(parent, bg=BG)
+        var = tk.StringVar(value=self.getter())
+
+        def step(direction):
+            cur = var.get()
+            try:
+                idx = self.DB_VALUES.index(cur)
+            except ValueError:
+                idx = 5  # default -60dB
+            new_idx = max(0, min(len(self.DB_VALUES) - 1, idx + direction))
+            val = self.DB_VALUES[new_idx]
+            var.set(val)
+            self.setter(val)
+
+        tk.Button(f, text="\u2212", bg=BTNFACE, font=FONT, relief="raised",
+                  bd=2, padx=5, command=lambda: step(1)).pack(side="left")
+        tk.Label(f, textvariable=var, bg=SUNKEN_BG, font=FONT, width=7,
+                 relief="sunken", bd=1).pack(side="left", padx=1)
+        tk.Button(f, text="+", bg=BTNFACE, font=FONT, relief="raised",
+                  bd=2, padx=5, command=lambda: step(-1)).pack(side="left")
+        return f
+
+
 class EntryFactory:
     def __init__(self, getter, setter, width=24):
         self.getter = getter
@@ -413,7 +445,7 @@ class SalvageGUI:
     def _build_bottom_bar(self, parent):
         """Logo centered + (status + Run + Stop) right-aligned."""
         bottom = tk.Frame(parent, bg=BG)
-        bottom.pack(fill="x", padx=2, pady=(2, 2))
+        bottom.pack(fill="x", padx=2, pady=(10, 8))
         self._bottom = bottom  # for progress-bar insertion later
 
         # centered logo (place handles true centering)
@@ -516,9 +548,8 @@ class SalvageGUI:
         self._add_toggle(pro.widget, "Margin (s)", SpinFactory(
             lambda: self.opts["margin"], lambda v: self.opts.__setitem__("margin", float(v)),
             0.0, 30.0, 0.1))
-        self._add_toggle(pro.widget, "Noise (dB)", EntryFactory(
-            lambda: self.opts["noise"], lambda v: self.opts.__setitem__("noise", v),
-            width=8))
+        self._add_toggle(pro.widget, "Noise (dB)", NoiseFactory(
+            lambda: self.opts["noise"], lambda v: self.opts.__setitem__("noise", v)))
 
         # Output
         out = CategoryBox(cats, " Output ")
@@ -538,6 +569,9 @@ class SalvageGUI:
         self._add_toggle(out.widget, "Audio", ComboFactory(
             ("off", "copy", "aac"),
             lambda: self.opts["audio"], lambda v: self.opts.__setitem__("audio", v)))
+
+        # ---- report table (populated after Check) ----
+        self._build_report_section(center)
 
         # ---- log (realtime) + auto-scroll ----
         log_frame = BeveledFrame(center, relief="sunken")
@@ -559,9 +593,12 @@ class SalvageGUI:
         sb.pack(side="right", fill="y")
         self.log.pack(side="left", fill="both", expand=True, padx=(2, 0))
 
-        # progress bar — lives OUTSIDE the log frame, in the center column,
-        # so it renders as a native standalone widget (not inside the bevel)
-        self.progress = ttk.Progressbar(center, mode="determinate", maximum=100)
+        # progress bar — native green, below the log, in center column
+        style = ttk.Style()
+        style.configure("Green.Horizontal.TProgressbar",
+                        troughcolor=BG, background="#00A000")
+        self.progress = ttk.Progressbar(center, mode="determinate", maximum=100,
+                                        style="Green.Horizontal.TProgressbar")
 
         # bottom bar lives INSIDE the center column (sidebars span full height)
         self._build_bottom_bar(center)
@@ -601,7 +638,83 @@ class SalvageGUI:
 
         self._watch_tick()
 
-    def _add_toggle(self, parent, label, factory, checked=True):
+    def _build_report_section(self, parent):
+        """Inline check-results table between options and log."""
+        self._report_frame = tk.Frame(parent, bg=BG)
+        self._report_tree = None
+
+    def _refresh_report_table(self):
+        """Populate or hide the inline report table from _check_results."""
+        if self._report_tree:
+            self._report_tree.destroy()
+            self._report_frame.pack_forget()
+
+        if not self._check_results:
+            return
+
+        self._report_frame.pack(fill="x", padx=2, pady=(4, 2))
+
+        hdr = tk.Frame(self._report_frame, bg=BG)
+        hdr.pack(fill="x", padx=2)
+        tk.Label(hdr, text=f"Check Results — {len(self._check_results)} file(s)",
+                 bg=BG, font=FONT_BOLD).pack(side="left")
+        tk.Button(hdr, text="Repair Checked", command=self._run,
+                  bg=RUN_GREEN, fg="#FFFFFF", font=FONT,
+                  relief="raised", bd=2, padx=6, pady=1).pack(side="right")
+
+        cols = [
+            ("checked", "✓", 30), ("file", "File", 120), ("error", "Error", 90),
+            ("decodable_pct", "%", 35), ("estimated_size_bytes", "Est.", 50),
+            ("verdict", "Verdict", 55),
+        ]
+        tree = ttk.Treeview(self._report_frame,
+                            columns=[c[0] for c in cols],
+                            show="headings", height=min(6, len(self._check_results)))
+        for key, label, width in cols:
+            tree.heading(key, text=label)
+            tree.column(key, width=width, anchor="center" if key != "file" else "w")
+
+        sb = ttk.Scrollbar(self._report_frame, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=sb.set)
+        tree.pack(side="left", fill="x", padx=2, pady=2)
+        sb.pack(side="right", fill="y", pady=2)
+
+        self._check_rows_iid = {}
+        for path, info in self._check_results.items():
+            checked = "☑" if path in self._checked_files else "☐"
+            size = int(info.get("estimated_size_bytes", 0) or 0)
+            vals = [checked, os.path.basename(path), info.get("error", "?"),
+                    str(info.get("decodable_pct", "?")) + "%", human_bytes_short(size),
+                    info.get("verdict", "?")]
+            iid = tree.insert("", "end", values=vals)
+            self._check_rows_iid[iid] = path
+
+        def on_click(event):
+            iid = tree.identify_row(event.y)
+            if not iid: return
+            path = self._check_rows_iid.get(iid)
+            if not path: return
+            if path in self._checked_files:
+                self._checked_files.discard(path)
+            else:
+                self._checked_files.add(path)
+            tree.set(iid, "checked", "☑" if path in self._checked_files else "☐")
+            self._update_estimate()
+        tree.bind("<Button-1>", on_click)
+
+        all_ck = [len(self._checked_files) == len(self._check_results)]
+        def on_hdr(event):
+            if tree.identify_region(event.x, event.y) != "heading": return
+            if tree.identify_column(event.x) != "#1": return
+            all_ck[0] = not all_ck[0]
+            self._checked_files = set(self._check_results.keys()) if all_ck[0] else set()
+            for iid, path in self._check_rows_iid.items():
+                tree.set(iid, "checked", "☑" if path in self._checked_files else "☐")
+            self._update_estimate()
+        tree.bind("<ButtonRelease-1>", on_hdr, add="+")
+        self._report_tree = tree
+
+    def _add_toggle(self, parent, label, factory, checked=False):
         if factory is None:
             t = OptionToggle(parent, label, lambda p: tk.Frame(p, bg=BG),
                              default_checked=checked)
@@ -653,7 +766,7 @@ class SalvageGUI:
         self._checked_files = set()
         self.view_report_btn.config(state="disabled")
         self.est_label.config(text="")
-        # remove session file
+        self._refresh_report_table()
         try:
             os.remove(self._session_path())
         except OSError:
@@ -826,7 +939,7 @@ class SalvageGUI:
             self._set_status(f"Check complete: {n} file(s)")
             self._save_session()
             self._update_estimate()
-            self._show_check_report()
+            self._refresh_report_table()
         else:
             self._set_status("Check: no results")
             self._log("no results — check reports could not be read\n")
@@ -1040,7 +1153,7 @@ class SalvageGUI:
         report_files = []
         # Show progress bar (between log and bottom bar)
         self.root.after(0, lambda: self.progress.pack(
-            fill="x", padx=4, pady=(2, 0), before=self._bottom))
+            fill="x", padx=4, pady=(4, 4), before=self._bottom))
         self.root.after(0, lambda: self.progress.configure(value=0))
         self._last_progress_update = 0  # throttle: update bar every 3s
         import time as _time
