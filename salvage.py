@@ -615,6 +615,9 @@ def ask_report_csv(results):
 
 
 def write_csv(path, results):
+    if os.path.isdir(path):
+        from datetime import datetime
+        path = os.path.join(path, f"salvage_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
     with open(path, "w", newline="") as f:
         f.write(report_csv_header() + "\n")
         for info in results:
