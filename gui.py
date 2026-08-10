@@ -399,25 +399,26 @@ class SalvageGUI:
                       bd=2, padx=10, command=cb).pack(side="left", padx=2)
 
     def _build_bottom_bar(self, parent):
-        """Logo + (status above Run) — sits at the bottom of the CENTER
-        column; the Help/About/Quit buttons live on the window-bottom strip."""
+        """Logo centered + (status + Run + Stop) right-aligned."""
         bottom = tk.Frame(parent, bg=BG)
         bottom.pack(fill="x", padx=2, pady=(2, 2))
-        bottom.grid_columnconfigure(0, weight=1)
-        bottom.grid_columnconfigure(2, weight=1)
+        self._bottom = bottom  # for progress-bar insertion later
 
-        # center logo
+        # left spacer — expands to push logo to visual center
+        tk.Frame(bottom, bg=BG).pack(side="left", fill="x", expand=True)
+
+        # centered logo
         logo = small_logo(self.root, width=96)
         if logo:
             lbl = tk.Label(bottom, image=logo, bg=BG)
             lbl.image = logo
         else:
             lbl = tk.Label(bottom, text="Video-Fix-98", bg=BG, font=FONT_BOLD)
-        lbl.grid(row=0, column=1)
+        lbl.pack(side="left")
 
-        # right cluster: status ABOVE the Run button
+        # right cluster: status → Run → Stop
         right = tk.Frame(bottom, bg=BG)
-        right.grid(row=0, column=2, sticky="e")
+        right.pack(side="right")
         self.status = tk.Label(right, text="Ready", bg=BG, font=FONT, anchor="e")
         self.status.pack(side="top", fill="x", padx=(0, 4), pady=(0, 6))
         self.run_btn = tk.Button(right, text="\u25B6  Run", command=self._run,
@@ -426,6 +427,14 @@ class SalvageGUI:
                                  relief="raised", bd=3, padx=20, pady=8,
                                  activebackground="#00B000")
         self.run_btn.pack(side="top")
+        self.stop_btn = tk.Button(right, text="\u25A0  Stop", command=self._stop,
+                                  bg="#CC0000", fg="#FFFFFF",
+                                  font=(FONT_FAMILY, 10, "bold"),
+                                  relief="raised", bd=3, padx=20, pady=4,
+                                  activebackground="#DD0000")
+        # hidden until a run starts
+        self.stop_btn.pack(side="top", pady=(4, 0))
+        self.stop_btn.pack_forget()
 
     def _build_source_pane(self, parent):
         box = CategoryBox(parent, " Source ")
@@ -529,9 +538,9 @@ class SalvageGUI:
         sb.pack(side="right", fill="y")
         self.log.pack(side="left", fill="both", expand=True, padx=(2, 0))
 
-        # progress bar — visible only during processing
-        self.progress = ttk.Progressbar(lf, mode="determinate", maximum=100)
-        # packed below the log, initially hidden
+        # progress bar — lives OUTSIDE the log frame, in the center column,
+        # so it renders as a native standalone widget (not inside the bevel)
+        self.progress = ttk.Progressbar(center, mode="determinate", maximum=100)
 
         # bottom bar lives INSIDE the center column (sidebars span full height)
         self._build_bottom_bar(center)
@@ -686,12 +695,20 @@ class SalvageGUI:
             return
         self.running = True
         self.run_btn.config(state="disabled")
+        self.stop_btn.pack(side="top", pady=(4, 0))
         self._set_status("Starting...")
         queue = list(self.source_queue)
         self._report_dir = tempfile.mkdtemp(prefix="vf98_reports_")
         self._log(f"\n--- starting {len(queue)} item(s) ---\n")
         t = threading.Thread(target=self._worker, args=(queue,), daemon=True)
         t.start()
+
+    def _stop(self):
+        """Terminate the running salvage process."""
+        if hasattr(self, "_proc") and self._proc and self._proc.poll() is None:
+            self._proc.terminate()
+            self._log("\n--- STOPPED by user ---\n")
+            self._set_status("Stopped")
 
     def _set_status(self, text):
         self.status.config(text=text)
@@ -700,8 +717,9 @@ class SalvageGUI:
         total = len(queue)
         ok = 0
         report_files = []
-        # Show progress bar
-        self.root.after(0, lambda: self.progress.pack(side="bottom", fill="x", padx=2))
+        # Show progress bar (between log and bottom bar)
+        self.root.after(0, lambda: self.progress.pack(
+            fill="x", padx=4, pady=(2, 0), before=self._bottom))
         self.root.after(0, lambda: self.progress.configure(value=0))
         self._last_progress_update = 0  # throttle: update bar every 3s
         import time as _time
@@ -717,10 +735,10 @@ class SalvageGUI:
             self.root.after(0, self._log, f"\n[{i}/{total}] $ "
                             + " ".join(cmd) + "\n")
             try:
-                p = subprocess.Popen(
+                self._proc = subprocess.Popen(
                     cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                     text=True, bufsize=1, creationflags=creationflags)
-                for line in p.stdout:
+                for line in self._proc.stdout:
                     if line.startswith("VF98PCT:"):
                         try:
                             pct = int(line.split(":")[1])
@@ -732,10 +750,10 @@ class SalvageGUI:
                             pass
                     else:
                         self.root.after(0, self._log, line)
-                p.wait()
-                if p.returncode == 0:
+                self._proc.wait()
+                if self._proc.returncode == 0:
                     ok += 1
-                self.root.after(0, self._log, f"[{i}/{total}] exit {p.returncode}\n")
+                self.root.after(0, self._log, f"[{i}/{total}] exit {self._proc.returncode}\n")
             except Exception as e:
                 self.root.after(0, self._log, f"[{i}/{total}] error: {e}\n")
         # Hide progress bar
@@ -760,6 +778,7 @@ class SalvageGUI:
     def _done(self, msg, rows=None):
         self.running = False
         self.run_btn.config(state="normal")
+        self.stop_btn.pack_forget()
         self._set_status(msg)
         self._log("\n" + msg + "\n")
         if rows:
