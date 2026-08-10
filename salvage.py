@@ -592,6 +592,8 @@ def repair_one(path, output_path, args, info):
            "-an", "-y", output_path]
 
     print(f"  repairing ({args.codec} / {args.container} / audio {args.audio_mode})...")
+    if args.gui:
+        print("VF98PHASE:encoding", flush=True)
     ok, stderr_out = run_with_progress(cmd, info["estimated_duration"], gui=args.gui)
     if not os.path.exists(output_path):
         print("  ERROR: no output produced")
@@ -612,6 +614,8 @@ def repair_one(path, output_path, args, info):
             mux_cmd += ["-c:a", "aac", "-b:a", "128k"]
         mux_cmd += ["-y", output_path]
         print("  muxing audio...")
+        if args.gui:
+            print("VF98PHASE:muxing", flush=True)
         ok2, o2 = run_with_progress(mux_cmd, info["estimated_duration"], gui=args.gui)
         try:
             os.remove(tmp)

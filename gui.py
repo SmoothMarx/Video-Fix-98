@@ -579,6 +579,10 @@ class SalvageGUI:
         self._build_report_section(self._notebook)
         self._notebook.add(self._report_frame, text="Report")
 
+        # Results tab (populated after repair)
+        self._results_frame = tk.Frame(self._notebook, bg=BG)
+        self._notebook.add(self._results_frame, text="Results")
+
         # progress bar — native green, below the log, in center column
         style = ttk.Style()
         style.configure("Green.Horizontal.TProgressbar",
@@ -1169,7 +1173,11 @@ class SalvageGUI:
                     cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                     text=True, bufsize=1, creationflags=creationflags)
                 for line in self._proc.stdout:
-                    if line.startswith("VF98PCT:"):
+                    if line.startswith("VF98PHASE:"):
+                        phase = line.split(":", 1)[1].strip()
+                        self.root.after(0, lambda p=phase, n=name, j=i, t=total:
+                            self._set_status(f"Running [{j}/{t}] {n} — {p}"))
+                    elif line.startswith("VF98PCT:"):
                         try:
                             pct = int(line.split(":")[1])
                             now = _time.time()
@@ -1229,7 +1237,45 @@ class SalvageGUI:
         self._log("\n" + msg + "\n")
         self._save_session()
         if rows:
-            self._show_report(rows, msg)
+            self._populate_results(rows, msg)
+
+    def _populate_results(self, rows, msg):
+        """Fill the Results tab with a summary table."""
+        for child in list(self._results_frame.winfo_children()):
+            child.destroy()
+
+        hdr = tk.Frame(self._results_frame, bg=BG)
+        hdr.pack(fill="x", padx=4, pady=(4, 2))
+        tk.Label(hdr, text=msg, bg=BG, font=FONT_BOLD).pack(side="left")
+
+        cols = [
+            ("file", "File", 150), ("final_size_bytes", "Final Size", 70),
+            ("final_duration", "Dur (s)", 55), ("verdict", "Status", 70),
+        ]
+        tree = ttk.Treeview(self._results_frame,
+                            columns=[c[0] for c in cols],
+                            show="headings", height=min(10, len(rows)))
+        for key, label, width in cols:
+            tree.heading(key, text=label)
+            tree.column(key, width=width, anchor="center" if key != "file" else "w")
+
+        sb = ttk.Scrollbar(self._results_frame, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=sb.set)
+        tree.pack(side="left", fill="both", expand=True, padx=4, pady=2)
+        sb.pack(side="right", fill="y", pady=2)
+
+        for r in rows:
+            sz = r.get("final_size_bytes", "-")
+            if sz and sz != "-":
+                try:
+                    sz = self._human(int(sz))
+                except (ValueError, TypeError):
+                    pass
+            vals = [r.get("file", "?"), sz,
+                    r.get("final_duration", "-"), r.get("verdict", "-")]
+            tree.insert("", "end", values=vals)
+
+        self._notebook.select(3)  # switch to Results tab
 
     # ------------------------------------------------------------ popups
     def _human(self, n):
