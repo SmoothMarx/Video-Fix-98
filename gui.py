@@ -372,7 +372,8 @@ class SalvageGUI:
             "audio": "off",
         }
         self.source_queue = []
-        self.out_dir = ""
+        self.out_dir = os.path.join(os.path.dirname(os.path.abspath(sys.executable)),
+                                     "Video Fixer Output")
         self.running = False
         self._check_results = {}
         self._checked_files = set()
@@ -403,12 +404,26 @@ class SalvageGUI:
                          anchor="w", padx=6, pady=3)
         title.pack(fill="x", pady=(0, 6))
 
-        panes = tk.Frame(body, bg=BG)
+        panes = tk.PanedWindow(body, orient=tk.HORIZONTAL, bg=BG, sashwidth=4)
         panes.pack(fill="both", expand=True, padx=2, pady=2)
 
-        self._build_source_pane(panes)
-        self._build_center_pane(panes)
-        self._build_watch_pane(panes)
+        # source pane
+        source_frame = tk.Frame(panes, bg=BG)
+        panes.add(source_frame, width=200, minsize=100)
+        self._build_source_pane(source_frame)
+
+        # center pane
+        self.center_frame = tk.Frame(panes, bg=BG)
+        panes.add(self.center_frame, stretch="always")
+        self._build_center_pane(self.center_frame)
+
+        # watch pane (output folder)
+        watch_frame = tk.Frame(panes, bg=BG)
+        panes.add(watch_frame, width=230, minsize=120)
+        self._build_watch_pane(watch_frame)
+
+        # split mode: 0=stacked, 1=vertical, 2=horizontal
+        self._split_mode = 0
 
 
     def _build_bottom_bar(self, parent):
@@ -503,6 +518,10 @@ class SalvageGUI:
             pre.widget, text="Import", command=self._import_session,
             bg=BTNFACE, font=FONT, relief="raised", bd=2, padx=6, pady=1)
         self.import_btn.pack(fill="x", padx=6, pady=(0, 3))
+        self.split_btn = tk.Button(
+            pre.widget, text="\u2550\u2566\u2550", command=self._toggle_split,
+            bg=BTNFACE, font=FONT, relief="raised", bd=2, padx=6, pady=1)
+        self.split_btn.pack(fill="x", padx=6, pady=(0, 3))
 
         # Processing (incl. preset per user request)
         pro = CategoryBox(cats, " Processing ")
@@ -546,27 +565,16 @@ class SalvageGUI:
         # ---- report table (populated after Check) ----
         self._build_report_section(center)
 
-        # ---- log (realtime) + auto-scroll ----
-        log_frame = BeveledFrame(center, relief="sunken")
-        log_frame.pack(fill="both", expand=True, padx=4, pady=(2, 2))
-        lf = log_frame.widget
+        # ---- report + log split area ----
+        self._create_log_frame()
+        self._build_report_section()
 
-        log_header = tk.Frame(lf, bg=BG)
-        log_header.pack(fill="x", padx=2, pady=(0, 1))
-        tk.Label(log_header, text="Progress log (realtime)", bg=BG,
-                 font=FONT_BOLD).pack(side="left")
-        tk.Checkbutton(log_header, text="Auto-scroll", variable=self.autoscroll,
-                       bg=BG, activebackground=BG, font=FONT).pack(side="right")
+        # ---- split area (reconfigured by toggle) ----
+        self._split_area = tk.Frame(center, bg=BG)
+        self._split_area.pack(fill="both", expand=True, padx=4, pady=(2, 2))
+        self._log_frame.pack(in_=self._split_area, fill="both", expand=True)
 
-        self.log = tk.Text(lf, height=10, width=70, bg=SUNKEN_BG,
-                           relief="sunken", bd=2, font=("Courier", 8),
-                           wrap="word", state="disabled")
-        sb = tk.Scrollbar(lf, command=self.log.yview)
-        self.log.config(yscrollcommand=sb.set)
-        sb.pack(side="right", fill="y")
-        self.log.pack(side="left", fill="both", expand=True, padx=(2, 0))
-
-        # progress bar — native green, below the log, in center column
+        # ---- progress bar ----
         style = ttk.Style()
         style.configure("Green.Horizontal.TProgressbar",
                         troughcolor=BG, background="#00A000")
@@ -587,7 +595,8 @@ class SalvageGUI:
         row.pack(fill="x", padx=4, pady=4)
         tk.Button(row, text="Browse...", command=self._browse_out, bg=BTNFACE,
                   font=FONT, relief="raised", bd=2, padx=6).pack(side="left")
-        self.watch_dir_lbl = tk.Label(row, text="(not set)", bg=BG, font=FONT,
+        default_name = os.path.basename(self.out_dir) if self.out_dir else "(not set)"
+        self.watch_dir_lbl = tk.Label(row, text=default_name, bg=BG, font=FONT,
                                       anchor="w")
         self.watch_dir_lbl.pack(side="left", padx=(4, 0), fill="x", expand=True)
 
@@ -611,10 +620,34 @@ class SalvageGUI:
 
         self._watch_tick()
 
-    def _build_report_section(self, parent):
-        """Inline check-results table between options and log."""
-        self._report_frame = tk.Frame(parent, bg=BG)
+    def _create_log_frame(self, parent=None):
+        """Create log widget in its own frame for the split area."""
+        if parent is None:
+            parent = self.center_frame
+        log_frame = BeveledFrame(parent, relief="sunken")
+        self._log_frame = log_frame.widget
+        lf = self._log_frame
+
+        log_header = tk.Frame(lf, bg=BG)
+        log_header.pack(fill="x", padx=2, pady=(0, 1))
+        tk.Label(log_header, text="Progress log (realtime)", bg=BG,
+                 font=FONT_BOLD).pack(side="left")
+        tk.Checkbutton(log_header, text="Auto-scroll", variable=self.autoscroll,
+                       bg=BG, activebackground=BG, font=FONT).pack(side="right")
+
+        self.log = tk.Text(lf, height=10, width=70, bg=SUNKEN_BG,
+                           relief="sunken", bd=2, font=("Courier", 8),
+                           wrap="word", state="disabled")
+        sb = tk.Scrollbar(lf, command=self.log.yview)
+        self.log.config(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        self.log.pack(side="left", fill="both", expand=True, padx=(2, 0))
+
+    def _build_report_section(self, parent=None):
+        """Set up report data structure (frame created on refresh)."""
+        self._report_frame = tk.Frame(self._split_area, bg=BG)
         self._report_tree = None
+        self._report_visible = True
 
     def _refresh_report_table(self):
         """Populate or hide the inline report table from _check_results."""
@@ -623,9 +656,10 @@ class SalvageGUI:
             self._report_frame.pack_forget()
 
         if not self._check_results:
+            self._reconfigure_split()
             return
 
-        self._report_frame.pack(fill="x", padx=2, pady=(4, 2))
+        self._report_frame.pack(in_=self._split_area, fill="both", expand=True, padx=2, pady=2)
 
         hdr = tk.Frame(self._report_frame, bg=BG)
         hdr.pack(fill="x", padx=2)
@@ -696,7 +730,6 @@ class SalvageGUI:
         if self._report_tree:
             if self._report_visible:
                 self._report_tree.pack(side="left", fill="x", padx=2, pady=2)
-                # re-pack the scrollbar too
                 for child in self._report_frame.winfo_children():
                     if isinstance(child, ttk.Scrollbar):
                         child.pack(side="right", fill="y", pady=2)
@@ -705,6 +738,53 @@ class SalvageGUI:
                 for child in self._report_frame.winfo_children():
                     if isinstance(child, ttk.Scrollbar):
                         child.pack_forget()
+
+    def _toggle_split(self):
+        """Cycle split mode: 0=stacked → 1=vertical → 2=horizontal."""
+        self._split_mode = (self._split_mode + 1) % 3
+        self._reconfigure_split()
+
+    def _reconfigure_split(self):
+        """Rebuild the split area to match the current _split_mode."""
+        # destroy old split area
+        for child in self._split_area.winfo_children():
+            child.destroy()
+        self._split_area.destroy()
+
+        if self._split_mode == 0:
+            # Stacked with tabs
+            self._split_area = ttk.Notebook(self.center_frame)
+            self._split_area.pack(fill="both", expand=True, padx=4, pady=(2, 2))
+            self._create_log_frame(self._split_area)
+            self._report_frame = tk.Frame(self._split_area, bg=BG)
+            self._split_area.add(self._log_frame, text="Progress Log")
+            self._split_area.add(self._report_frame, text="Report")
+            if self._check_results:
+                self._refresh_report_table()
+        elif self._split_mode == 1:
+            # Vertical split: report left, log right
+            self._split_area = tk.PanedWindow(
+                self.center_frame, orient=tk.HORIZONTAL, bg=BG, sashwidth=4)
+            self._split_area.pack(fill="both", expand=True, padx=4, pady=(2, 2))
+            self._create_log_frame(self._split_area)
+            self._report_frame = tk.Frame(self._split_area, bg=BG)
+            self._split_area.add(self._log_frame, stretch="always", minsize=100)
+            if self._check_results:
+                self._split_area.add(self._report_frame, stretch="always", minsize=100)
+                self._refresh_report_table()
+        else:
+            # Horizontal split: report top, log bottom
+            self._split_area = tk.PanedWindow(
+                self.center_frame, orient=tk.VERTICAL, bg=BG, sashwidth=4)
+            self._split_area.pack(fill="both", expand=True, padx=4, pady=(2, 2))
+            self._create_log_frame(self._split_area)
+            self._report_frame = tk.Frame(self._split_area, bg=BG)
+            self._split_area.add(self._log_frame, stretch="always", minsize=50)
+            if self._check_results:
+                self._split_area.add(self._report_frame, stretch="always", minsize=50)
+                self._refresh_report_table()
+
+        self.progress.lift()
 
     def _add_toggle(self, parent, label, factory, checked=False):
         if factory is None:
@@ -824,6 +904,9 @@ class SalvageGUI:
             cmd += ["--resolution", self.opts["resolution"]]
         if self.out_dir:
             cmd += ["--out-dir", self.out_dir]
+        else:
+            cmd += ["--out-dir", os.path.join(
+                os.path.dirname(os.path.abspath(sys.executable)), "Video Fixer Output")]
         if report_path:
             cmd += ["--report", report_path]
         return cmd
