@@ -103,9 +103,9 @@ def sparse_alloc_pct(path):
     """% of the file that actually occupies disk blocks (vs holes)."""
     try:
         st = os.stat(path)
-        blocks = st.st_blocks * 512
+        blocks = getattr(st, "st_blocks", 0) * 512
         size = st.st_size
-        if size <= 0:
+        if size <= 0 or blocks <= 0:
             return 100.0
         return min(100.0, blocks / size * 100.0)
     except OSError:
