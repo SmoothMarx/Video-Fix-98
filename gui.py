@@ -950,6 +950,7 @@ def main():
     else:
         root.withdraw()
         show_splash(root, lambda: (root.deiconify(), SalvageGUI(root)))
+        root.mainloop()
 
 
 if __name__ == "__main__":
