@@ -81,12 +81,10 @@ jobs:
           - salvage.exe: CLI tool (bundles ffmpeg/ffprobe/untrunc)
           - Video-Fix-98.exe: GUI app (bundles salvage.exe + assets)
           Double-click Video-Fix-98.exe to launch."
-          # create a release if we're on a tag that has none yet
+          # delete any existing release for this tag (re-trigger safety)
+          gh release delete "$TAG" --yes 2>/dev/null || true
           gh release create "$TAG" \
             dist/salvage.exe \
             dist/Video-Fix-98.exe \
-            --title "Windows exes — $TAG" \
-            --notes "$NOTES" \
-            --generate-notes 2>/dev/null || \
-          gh release upload "$TAG" \
-            dist/salvage.exe dist/Video-Fix-98.exe --clobber
+            --title "Video-Fix-98 — Windows $TAG" \
+            --notes "$NOTES"
