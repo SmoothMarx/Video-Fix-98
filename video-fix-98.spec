@@ -36,7 +36,7 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=datas,
-    hiddenimports=[],
+    hiddenimports=['tkinter', 'tkinter.ttk', 'tkinter.filedialog', 'tkinter.messagebox'],
     hookspath=[],
     runtime_hooks=[],
     excludes=["test", "unittest"],
@@ -54,7 +54,7 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=False,
     console=False,         # GUI: no console window
     icon="assets/icon.ico",
 )
