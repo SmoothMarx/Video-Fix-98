@@ -356,6 +356,7 @@ class SalvageGUI:
         root.configure(bg=BG)
         root.resizable(True, True)
         self._set_icon(root)
+        root.geometry("900x680")
 
         self.opts = {
             "fix": "auto",
@@ -443,13 +444,9 @@ class SalvageGUI:
         lbl.pack(side="left")
         tk.Frame(bottom, bg=BG).pack(side="left", fill="x", expand=True)
 
-        # right cluster: estimate → status → Run → Stop
+        # right cluster: Run → Stop
         right = tk.Frame(bottom, bg=BG)
         right.pack(side="right")
-        self.est_label = tk.Label(right, text="", bg=BG, font=FONT, fg="#666666", anchor="e")
-        self.est_label.pack(side="top", fill="x", padx=(0, 4))
-        self.status = tk.Label(right, text="Ready", bg=BG, font=FONT, anchor="e")
-        self.status.pack(side="top", fill="x", padx=(0, 4), pady=(0, 6))
         self.run_btn = tk.Button(right, text="\u25B6  Run", command=self._run,
                                  bg=RUN_GREEN, fg="#FFFFFF",
                                  font=(FONT_FAMILY, 10, "bold"),
@@ -478,7 +475,7 @@ class SalvageGUI:
                   font=FONT, relief="raised", bd=2, padx=4).pack(side="left", padx=(4, 0))
 
         self.queue_list = tk.Listbox(w, bg=SUNKEN_BG, relief="sunken", bd=2,
-                                     font=("Courier", 8), selectmode="extended")
+                                     font=("Courier", 10), selectmode="extended")
         self.queue_list.pack(fill="both", expand=True, padx=4, pady=2)
 
         row2 = tk.Frame(w, bg=BG)
@@ -590,6 +587,15 @@ class SalvageGUI:
         self.progress = ttk.Progressbar(center, mode="determinate", maximum=100,
                                         style="Green.Horizontal.TProgressbar")
 
+        # status bar below progress bar: status centered, estimate right
+        self._status_frame = tk.Frame(center, bg=BG)
+        self._status_frame.pack(fill="x", padx=4, pady=(0, 2))
+        self.est_label = tk.Label(self._status_frame, text="", bg=BG, font=FONT,
+                                  fg="#666666")
+        self.est_label.pack(side="right")
+        self.status = tk.Label(self._status_frame, text="Ready", bg=BG, font=FONT)
+        self.status.pack(side="left", fill="x", expand=True)
+
         # bottom bar lives INSIDE the center column (sidebars span full height)
         self._build_bottom_bar(center)
 
@@ -608,7 +614,7 @@ class SalvageGUI:
         self.watch_dir_lbl.pack(side="left", padx=(4, 0), fill="x", expand=True)
 
         self.watch_list = tk.Listbox(w, bg=SUNKEN_BG, relief="sunken", bd=2,
-                                     font=("Courier", 8), selectmode="single")
+                                     font=("Courier", 10), selectmode="single")
         self.watch_list.pack(fill="both", expand=True, padx=4, pady=2)
         self.watch_count = tk.Label(w, text="0 files", bg=BG, font=FONT, anchor="w")
         self.watch_count.pack(fill="x", padx=6, pady=(0, 4))
@@ -647,8 +653,8 @@ class SalvageGUI:
         self._notebook.select(1)  # switch to report tab
 
         cols = [
-            ("checked", "✓", 45), ("file", "File", 120), ("error", "Error", 90),
-            ("decodable_pct", "%", 35), ("good_seconds", "Good (s)", 55),
+            ("checked", "✓", 35), ("file", "File", 120), ("error", "Error", 90),
+            ("decodable_pct", "% recovered", 55), ("good_seconds", "Salvaged", 70),
         ]
         tree = ttk.Treeview(self._report_frame,
                             columns=[c[0] for c in cols],
@@ -680,9 +686,14 @@ class SalvageGUI:
         for path, info in self._check_results.items():
             checked = "☑" if path in self._checked_files else "☐"
             gs = info.get("good_seconds", 0)
+            if isinstance(gs, (int, float)):
+                m, s = divmod(int(gs), 60)
+                h, m = divmod(m, 60)
+                gs_str = f"{h:02d}:{m:02d}:{s:02d}"
+            else:
+                gs_str = str(gs)
             vals = [checked, os.path.basename(path), info.get("error", "?"),
-                    f"{info.get('decodable_pct', '?')}%",
-                    f"{gs:.1f}" if isinstance(gs, (int, float)) else str(gs)]
+                    f"{info.get('decodable_pct', '?')}%", gs_str]
             iid = tree.insert("", "end", values=vals)
             self._check_rows_iid[iid] = path
 
@@ -889,6 +900,9 @@ class SalvageGUI:
         self._checked_files = set()
         self._set_status("Checking...")
         self._log("\n--- checking " + str(len(self.source_queue)) + " file(s) ---\n")
+        self.root.after(0, lambda: self.progress.pack(
+            fill="x", padx=4, pady=(4, 4), before=self._bottom))
+        self.root.after(0, lambda: self.progress.configure(value=0))
         t = threading.Thread(target=self._check_worker, daemon=True)
         t.start()
 
@@ -912,6 +926,7 @@ class SalvageGUI:
                     if line.startswith("VF98PCT:"):
                         try:
                             pct = int(line.split(":")[1])
+                            self.root.after(0, lambda v=pct: self.progress.configure(value=v))
                             self.root.after(0, lambda p=pct, n=name, j=i, t=total:
                                 self._set_status(
                                     f"Checking [{j}/{t}] {n} — {p}%"))
@@ -940,6 +955,7 @@ class SalvageGUI:
         self.running = False
         self.check_btn.config(state="normal")
         self.run_btn.config(state="normal")
+        self.root.after(0, self.progress.pack_forget)
         n = len(self._check_results)
         if n > 0:
             self._set_status(f"Check complete: {n} file(s)")
@@ -1249,8 +1265,9 @@ class SalvageGUI:
         tk.Label(hdr, text=msg, bg=BG, font=FONT_BOLD).pack(side="left")
 
         cols = [
-            ("file", "File", 150), ("final_size_bytes", "Final Size", 70),
-            ("final_duration", "Dur (s)", 55), ("verdict", "Status", 70),
+            ("item", "#", 35), ("file", "Filename", 160),
+            ("final_size_bytes", "Final Size", 70),
+            ("final_duration", "Duration", 70),
         ]
         tree = ttk.Treeview(self._results_frame,
                             columns=[c[0] for c in cols],
@@ -1264,15 +1281,22 @@ class SalvageGUI:
         tree.pack(side="left", fill="both", expand=True, padx=4, pady=2)
         sb.pack(side="right", fill="y", pady=2)
 
-        for r in rows:
+        for idx, r in enumerate(rows, 1):
             sz = r.get("final_size_bytes", "-")
             if sz and sz != "-":
                 try:
                     sz = self._human(int(sz))
                 except (ValueError, TypeError):
                     pass
-            vals = [r.get("file", "?"), sz,
-                    r.get("final_duration", "-"), r.get("verdict", "-")]
+            dur = r.get("final_duration", "-")
+            if dur and dur != "-":
+                try:
+                    m, s = divmod(int(float(dur)), 60)
+                    h, m = divmod(m, 60)
+                    dur = f"{h:02d}:{m:02d}:{s:02d}"
+                except (ValueError, TypeError):
+                    pass
+            vals = [idx, os.path.basename(r.get("file", "?")), sz, dur]
             tree.insert("", "end", values=vals)
 
         self._notebook.select(3)  # switch to Results tab
