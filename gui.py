@@ -357,7 +357,6 @@ class SalvageGUI:
         self._set_icon(root)
 
         self.opts = {
-            "mode": "check",
             "fix": "auto",
             "force_pass": False,
             "crf": 20,
@@ -497,9 +496,6 @@ class SalvageGUI:
         # Pre-start
         pre = CategoryBox(cats, " Pre-start ")
         pre.pack(side="left", fill="both", expand=True, padx=(0, 3))
-        self._add_toggle(pre.widget, "Mode", ComboFactory(
-            ("check", "repair"),
-            lambda: self.opts["mode"], lambda v: self.opts.__setitem__("mode", v)))
         self._add_toggle(pre.widget, "Fix", ComboFactory(
             ("auto", "salvage", "remux", "untrunc", "none"),
             lambda: self.opts["fix"], lambda v: self.opts.__setitem__("fix", v)))
@@ -510,6 +506,10 @@ class SalvageGUI:
             bg=BTNFACE, font=FONT, relief="raised", bd=2, padx=6, pady=1,
             state="disabled")
         self.view_report_btn.pack(fill="x", padx=6, pady=3)
+        self.import_btn = tk.Button(
+            pre.widget, text="Import", command=self._import_session,
+            bg=BTNFACE, font=FONT, relief="raised", bd=2, padx=6, pady=1)
+        self.import_btn.pack(fill="x", padx=6, pady=(0, 3))
 
         # Processing (incl. preset per user request)
         pro = CategoryBox(cats, " Processing ")
@@ -699,9 +699,8 @@ class SalvageGUI:
         cmd = [self._runner()] if getattr(sys, "frozen", False) else [sys.executable, self._tool_path()]
         cmd += ["--gui"]
         cmd += [src]
-        cmd += ["--mode", self.opts["mode"]]
-        if self.opts["mode"] == "repair":
-            cmd += ["--fix", self.opts["fix"]]
+        cmd += ["--mode", "repair"]
+        cmd += ["--fix", self.opts["fix"]]
         cmd += ["--container", self.opts["container"]]
         cmd += ["--codec", self.opts["codec"]]
         cmd += ["--audio-mode", self.opts["audio"]]
@@ -831,10 +830,9 @@ class SalvageGUI:
             self._log("no results — check reports could not be read\n")
 
     def _show_check_report(self):
-        """Popup table with checkbox column, select-all header, Repair Checked."""
+        """Popup table: click header ✓ to toggle all, check per-row, Repair button."""
         if not self._check_results:
             return
-        # auto-enable all if no selections yet
         if not self._checked_files:
             self._checked_files = set(self._check_results.keys())
 
@@ -849,22 +847,13 @@ class SalvageGUI:
                           bg=NAVY, fg=TITLE_FG, font=FONT_BOLD, anchor="w", padx=6, pady=3)
         header.pack(fill="x")
 
-        # select-all checkbox row
-        sel_row = tk.Frame(outer, bg=BG)
-        sel_row.pack(fill="x", padx=4, pady=(4, 0))
-        self._select_all_var = tk.BooleanVar(value=True)
-        cb = tk.Checkbutton(sel_row, text="Select / deselect all",
-                            variable=self._select_all_var, bg=BG,
-                            activebackground=BG, font=FONT,
-                            command=self._toggle_select_all)
-        cb.pack(side="left")
-
         # table
         cols = [
             ("checked", "✓", 30),
             ("file", "File", 140),
-            ("error", "Error", 110),
+            ("error", "Error", 100),
             ("good_seconds", "Good (s)", 55),
+            ("decodable_pct", "Decodable %", 55),
             ("estimated_size_bytes", "Est. Size", 55),
             ("verdict", "Verdict", 60),
         ]
@@ -876,11 +865,8 @@ class SalvageGUI:
 
         vsb = ttk.Scrollbar(outer, orient="vertical", command=tree.yview)
         tree.configure(yscrollcommand=vsb.set)
-
-        table_frame = tk.Frame(outer, bg=BG)
-        table_frame.pack(fill="both", expand=True, padx=4, pady=4)
-        tree.pack(side="left", fill="both", expand=True)
-        vsb.pack(side="right", fill="y")
+        tree.pack(side="left", fill="both", expand=True, padx=4, pady=4)
+        vsb.pack(side="right", fill="y", pady=4)
 
         self._check_rows_iid = {}
         for path, info in self._check_results.items():
@@ -891,6 +877,7 @@ class SalvageGUI:
                 os.path.basename(path),
                 info.get("error", "?"),
                 info.get("good_seconds", "?"),
+                f"{info.get('decodable_pct', '?')}%",
                 human_bytes_short(size),
                 info.get("verdict", "?"),
             ]
@@ -908,13 +895,30 @@ class SalvageGUI:
                 self._checked_files.discard(path)
             else:
                 self._checked_files.add(path)
-            checked = "☑" if path in self._checked_files else "☐"
-            tree.set(iid, "checked", checked)
+            tree.set(iid, "checked", "☑" if path in self._checked_files else "☐")
             self._update_estimate()
 
         tree.bind("<Button-1>", on_click)
 
-        # footer
+        # header click → toggle all
+        all_checked = [len(self._checked_files) == len(self._check_results)]
+        def on_header_click(event):
+            if tree.identify_region(event.x, event.y) != "heading":
+                return
+            if tree.identify_column(event.x) != "#1":
+                return
+            all_checked[0] = not all_checked[0]
+            if all_checked[0]:
+                self._checked_files = set(self._check_results.keys())
+            else:
+                self._checked_files.clear()
+            for iid, path in self._check_rows_iid.items():
+                tree.set(iid, "checked", "☑" if path in self._checked_files else "☐")
+            self._update_estimate()
+
+        tree.bind("<ButtonRelease-1>", on_header_click, add="+")
+
+        # footer buttons
         footer = tk.Frame(outer, bg=BG)
         footer.pack(fill="x", padx=4, pady=(0, 4))
         tk.Button(footer, text="Repair Checked", command=lambda: [win.destroy(), self._run()],
@@ -924,20 +928,7 @@ class SalvageGUI:
         tk.Button(footer, text="Close", command=win.destroy,
                   bg=BTNFACE, font=FONT, relief="raised", bd=2, padx=12, pady=2).pack(side="right")
 
-        self._check_tree = tree  # keep ref for toggle
-
         center_window(win, self.root)
-
-    def _toggle_select_all(self):
-        if self._select_all_var.get():
-            self._checked_files = set(self._check_results.keys())
-        else:
-            self._checked_files.clear()
-        if hasattr(self, "_check_tree"):
-            for iid, path in self._check_rows_iid.items():
-                checked = "☑" if path in self._checked_files else "☐"
-                self._check_tree.set(iid, "checked", checked)
-        self._update_estimate()
 
     def _update_estimate(self):
         if not self._check_results:
@@ -975,6 +966,26 @@ class SalvageGUI:
                 json.dump(data, f)
         except Exception:
             pass
+
+    def _import_session(self):
+        """Load a previously saved session JSON chosen by the user."""
+        path = filedialog.askopenfilename(
+            title="Import check session",
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")])
+        if not path:
+            return
+        try:
+            with open(path) as f:
+                data = json.load(f)
+            self._check_results = data.get("results", {})
+            self._checked_files = set(data.get("checked", self._check_results.keys()))
+            if self._check_results:
+                self.view_report_btn.config(state="normal")
+                self._update_estimate()
+                self._set_status(f"Imported: {len(self._check_results)} file(s)")
+                self._show_check_report()
+        except Exception as e:
+            messagebox.showerror("Video-Fix-98", f"Could not import session:\n{e}")
 
     def _load_session(self):
         try:
@@ -1039,6 +1050,20 @@ class SalvageGUI:
                 if self._proc.returncode == 0:
                     ok += 1
                 self.root.after(0, self._log, f"[{i}/{total}] exit {self._proc.returncode}\n")
+                # merge repair results back into check results
+                if src in self._check_results and os.path.exists(report_path):
+                    try:
+                        with open(report_path, newline="", encoding="utf-8") as f:
+                            repair_rows = list(csv.DictReader(f))
+                        if repair_rows:
+                            rr = repair_rows[0]
+                            info = self._check_results[src]
+                            for k in ("final_size_bytes", "final_duration",
+                                      "final_frozen_seconds", "verdict"):
+                                if k in rr and rr[k]:
+                                    info[k] = rr[k]
+                    except Exception:
+                        pass
             except Exception as e:
                 self.root.after(0, self._log, f"[{i}/{total}] error: {e}\n")
         # Hide progress bar
@@ -1066,6 +1091,7 @@ class SalvageGUI:
         self.stop_btn.pack_forget()
         self._set_status(msg)
         self._log("\n" + msg + "\n")
+        self._save_session()
         if rows:
             self._show_report(rows, msg)
 
