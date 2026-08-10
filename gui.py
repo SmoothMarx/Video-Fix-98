@@ -22,11 +22,11 @@ Requires: Python 3 + tkinter, and salvage.py + ffmpeg/ffprobe/untrunc on PATH
 Usage:
     python3 gui.py
 """
-import sys, os as _os
+import sys
 
 # ---- heartbeat: written as the first executable line to prove that the -----
 # ---- Python interpreter actually started inside the frozen exe -------------
-_hb = _os.path.join(_os.path.dirname(_os.path.abspath(sys.executable)), "vf98-startup.log")
+_hb = os.path.join(os.path.dirname(os.path.abspath(sys.executable)), "vf98-startup.log")
 try:
     with open(_hb, "w") as _f:
         _f.write(f"Python started: {sys.version}\n")
@@ -97,8 +97,6 @@ VIDEO_EXTS = {".mp4", ".mkv", ".avi", ".mov", ".ts", ".webm",
 
 # per-variable help text for the Help popup
 VARIABLE_HELP = [
-    ("Mode", "check or repair. 'check' only assesses the damage; "
-             "'repair' also fixes it."),
     ("Fix", "Repair method. 'auto' decides from the damage; 'salvage' trims "
             "frozen frames and re-encodes; 'remux' rebuilds the container "
             "losslessly; 'untrunc' rebuilds a missing moov index."),
@@ -390,6 +388,16 @@ class SalvageGUI:
         self._build()
         self._load_session()
         self.est_label.config(text="")
+        root.protocol("WM_DELETE_WINDOW", self._on_close)
+
+    def _on_close(self):
+        """Clean up temp files on exit."""
+        try:
+            import shutil
+            shutil.rmtree(self._report_dir, ignore_errors=True)
+        except Exception:
+            pass
+        self.root.destroy()
 
     def _set_icon(self, win):
         if not os.path.exists(ICON_PATH):
@@ -970,127 +978,6 @@ class SalvageGUI:
             self._set_status("Check: no results")
             self._log("no results — check reports could not be read\n")
 
-    def _show_check_report(self):
-        """Popup table: click header ✓ to toggle all, check per-row, Repair button."""
-        if not self._check_results:
-            return
-        if not self._checked_files:
-            self._checked_files = set(self._check_results.keys())
-
-        win = tk.Toplevel(self.root)
-        win.title("Video-Fix-98 — Check Results")
-        win.configure(bg=BG)
-
-        outer = tk.Frame(win, bg=BG, relief="raised", bd=2)
-        outer.pack(padx=4, pady=4)
-
-        header = tk.Label(outer, text=f"Check Results — {len(self._check_results)} file(s)",
-                          bg=NAVY, fg=TITLE_FG, font=FONT_BOLD, anchor="w", padx=6, pady=3)
-        header.pack(fill="x")
-
-        # table
-        cols = [
-            ("checked", "✓", 30),
-            ("file", "File", 140),
-            ("error", "Error", 100),
-            ("good_seconds", "Good (s)", 55),
-            ("decodable_pct", "Decodable %", 55),
-            ("estimated_size_bytes", "Est. Size", 55),
-            ("verdict", "Verdict", 60),
-        ]
-        tree = ttk.Treeview(outer, columns=[c[0] for c in cols],
-                            show="headings", height=min(14, len(self._check_results)))
-        for key, label, width in cols:
-            tree.heading(key, text=label)
-            tree.column(key, width=width, anchor="center" if key != "file" else "w")
-
-        vsb = ttk.Scrollbar(outer, orient="vertical", command=tree.yview)
-        tree.configure(yscrollcommand=vsb.set)
-        tree.pack(side="left", fill="both", expand=True, padx=4, pady=4)
-        vsb.pack(side="right", fill="y", pady=4)
-
-        self._check_rows_iid = {}
-        for path, info in self._check_results.items():
-            checked = "☑" if path in self._checked_files else "☐"
-            size = int(info.get("estimated_size_bytes", 0) or 0)
-            vals = [
-                checked,
-                os.path.basename(path),
-                info.get("error", "?"),
-                info.get("good_seconds", "?"),
-                f"{info.get('decodable_pct', '?')}%",
-                human_bytes_short(size),
-                info.get("verdict", "?"),
-            ]
-            iid = tree.insert("", "end", values=vals)
-            self._check_rows_iid[iid] = path
-
-        def on_click(event):
-            iid = tree.identify_row(event.y)
-            if not iid:
-                return
-            path = self._check_rows_iid.get(iid)
-            if not path:
-                return
-            if path in self._checked_files:
-                self._checked_files.discard(path)
-            else:
-                self._checked_files.add(path)
-            tree.set(iid, "checked", "☑" if path in self._checked_files else "☐")
-            self._update_estimate()
-
-        tree.bind("<Button-1>", on_click)
-
-        # header click → toggle all
-        all_checked = [len(self._checked_files) == len(self._check_results)]
-        def on_header_click(event):
-            if tree.identify_region(event.x, event.y) != "heading":
-                return
-            if tree.identify_column(event.x) != "#1":
-                return
-            all_checked[0] = not all_checked[0]
-            if all_checked[0]:
-                self._checked_files = set(self._check_results.keys())
-            else:
-                self._checked_files.clear()
-            for iid, path in self._check_rows_iid.items():
-                tree.set(iid, "checked", "☑" if path in self._checked_files else "☐")
-            self._update_estimate()
-
-        tree.bind("<ButtonRelease-1>", on_header_click, add="+")
-
-        # footer buttons
-        footer = tk.Frame(outer, bg=BG)
-        footer.pack(fill="x", padx=4, pady=(0, 4))
-        tk.Button(footer, text="Repair Checked", command=lambda: [win.destroy(), self._run()],
-                  bg=RUN_GREEN, fg="#FFFFFF", font=FONT_BOLD,
-                  relief="raised", bd=3, padx=16, pady=6,
-                  activebackground="#00B000").pack(side="left")
-        tk.Button(footer, text="Save As...", command=self._save_session_as,
-                  bg=BTNFACE, font=FONT, relief="raised", bd=2, padx=12, pady=2).pack(side="left", padx=(4, 0))
-        tk.Button(footer, text="Close", command=win.destroy,
-                  bg=BTNFACE, font=FONT, relief="raised", bd=2, padx=12, pady=2).pack(side="right")
-
-        center_window(win, self.root)
-
-    def _update_estimate(self):
-        if not self._check_results:
-            self.est_label.config(text="")
-            return
-        checked = [p for p in self._check_results if p in self._checked_files]
-        if not checked:
-            self.est_label.config(text="")
-            return
-        total_s = sum(
-            float(self._check_results[p].get("good_seconds", 0) or 0)
-            for p in checked)
-        mins, secs = divmod(int(total_s), 60)
-        if mins > 0:
-            dur = f"{mins}m{secs:02d}s"
-        else:
-            dur = f"{secs}s"
-        self.est_label.config(text=f"{len(checked)} checked | {dur}")
-
     # ------------------------------------------------------- session persistence
     def _session_path(self):
         return os.path.join(tempfile.gettempdir(), "vf98_last_check.json")
@@ -1320,7 +1207,6 @@ class SalvageGUI:
             n /= 1024
         return f"{n:.1f} PB"
 
-    def _show_report(self, rows, summary):
         win = tk.Toplevel(self.root)
         win.title("Video-Fix-98 Report")
         win.configure(bg=BG)

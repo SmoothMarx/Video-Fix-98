@@ -253,10 +253,9 @@ def normalize_noise(value):
 
 def _freezedetect_with_progress(cmd, total_duration):
     """Run ffmpeg freezedetect, emitting VF98PCT progress to stdout."""
-    import subprocess as _sp
     out_lines = []
     dur_s = total_duration or 60  # fallback estimate
-    proc = _sp.Popen(cmd, stdout=_sp.PIPE, stderr=_sp.STDOUT, text=True, bufsize=1)
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
     for line in proc.stdout:
         out_lines.append(line)
         m = TIME_RE.search(line)
@@ -270,7 +269,8 @@ def _freezedetect_with_progress(cmd, total_duration):
             except (ValueError, ZeroDivisionError):
                 pass
     proc.wait()
-    print("VF98PCT:100", flush=True)
+    if proc.returncode == 0:
+        print("VF98PCT:100", flush=True)
     return "".join(out_lines)
 
 
