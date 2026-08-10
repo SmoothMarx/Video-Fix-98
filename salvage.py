@@ -19,9 +19,9 @@ import argparse
 import json
 import os
 import re
-import stat
 import subprocess
 import sys
+import tempfile
 
 # ---- PyInstaller bootstrap ------------------------------------------------
 # When frozen into an exe, bundled tools (ffmpeg/ffprobe/untrunc) live in
@@ -464,9 +464,12 @@ def untrunc_one(path, output_path, args, info):
     untrunc = shutil.which("untrunc")
     if not untrunc:
         # self-contained installs keep untrunc next to the tool
-        local = os.path.join(os.path.dirname(os.path.abspath(__file__)), "untrunc")
-        if os.path.exists(local) and os.access(local, os.X_OK):
-            untrunc = local
+        local_dir = os.path.dirname(os.path.abspath(__file__))
+        for name in ("untrunc", "untrunc.exe"):
+            local = os.path.join(local_dir, name)
+            if os.path.isfile(local):
+                untrunc = local
+                break
     if not untrunc:
         print("  ERROR: 'untrunc' binary not found on PATH "
               "(run setup.sh or install it)")
@@ -484,7 +487,7 @@ def untrunc_one(path, output_path, args, info):
     tmp_out = output_path + ".untrunc_tmp.mp4"
     # untrunc writes <input>_fixed.mp4 next to the input; we run it in a temp
     # workdir copy to keep our output path clean
-    workdir = os.path.join(args.workdir or "/tmp", "untrunc_work")
+    workdir = os.path.join(args.workdir or tempfile.gettempdir(), "untrunc_work")
     os.makedirs(workdir, exist_ok=True)
     src_copy = os.path.join(workdir, os.path.basename(path))
     ref_copy = os.path.join(workdir, os.path.basename(ref))
@@ -758,8 +761,8 @@ def main():
                          "untrunc = moov rebuild via reference file")
     ap.add_argument("--reference", help="healthy reference file for untrunc "
                                         "(optional; auto-searches siblings)")
-    ap.add_argument("--workdir", default="/tmp",
-                    help="temp work directory (default /tmp)")
+    ap.add_argument("--workdir", default=tempfile.gettempdir(),
+                    help="temp work directory (default: OS temp dir)")
     ap.add_argument("--force-pass", action="store_true",
                     help="run the full frame pass even on sparse files "
                          "(normally skipped: no data = nothing to examine)")
