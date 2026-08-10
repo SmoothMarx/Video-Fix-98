@@ -419,7 +419,7 @@ class SalvageGUI:
         right = tk.Frame(bottom, bg=BG)
         right.grid(row=0, column=2, sticky="e")
         self.status = tk.Label(right, text="Ready", bg=BG, font=FONT, anchor="e")
-        self.status.pack(side="top", fill="x", padx=(0, 4))
+        self.status.pack(side="top", fill="x", padx=(0, 4), pady=(0, 6))
         self.run_btn = tk.Button(right, text="\u25B6  Run", command=self._run,
                                  bg=RUN_GREEN, fg="#FFFFFF",
                                  font=(FONT_FAMILY, 10, "bold"),
@@ -580,7 +580,13 @@ class SalvageGUI:
     def _add_folder(self):
         p = filedialog.askdirectory(title="Add source folder")
         if p:
-            self._queue_add(p)
+            try:
+                for name in sorted(os.listdir(p)):
+                    if os.path.splitext(name)[1].lower() in VIDEO_EXTS:
+                        self._queue_add(os.path.join(p, name))
+            except OSError:
+                messagebox.showerror("Video-Fix-98",
+                    f"Could not read folder:\n{p}")
 
     def _queue_add(self, path):
         if path not in self.source_queue:
@@ -697,6 +703,8 @@ class SalvageGUI:
         # Show progress bar
         self.root.after(0, lambda: self.progress.pack(side="bottom", fill="x", padx=2))
         self.root.after(0, lambda: self.progress.configure(value=0))
+        self._last_progress_update = 0  # throttle: update bar every 3s
+        import time as _time
         # CREATE_NO_WINDOW on Windows — suppresses salvage.exe console popup
         creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
         for i, src in enumerate(queue, 1):
@@ -716,7 +724,10 @@ class SalvageGUI:
                     if line.startswith("VF98PCT:"):
                         try:
                             pct = int(line.split(":")[1])
-                            self.root.after(0, lambda v=pct: self.progress.configure(value=v))
+                            now = _time.time()
+                            if now - self._last_progress_update >= 3 or pct >= 100:
+                                self.root.after(0, lambda v=pct: self.progress.configure(value=v))
+                                self._last_progress_update = now
                         except (ValueError, IndexError):
                             pass
                     else:

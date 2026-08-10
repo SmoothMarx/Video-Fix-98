@@ -705,7 +705,7 @@ def interactive_config(args):
     args.out_dir = out_dir
 
     if not is_dir:
-        default_name = os.path.splitext(os.path.basename(src))[0] + "." + args.container
+        default_name = os.path.splitext(os.path.basename(src))[0] + "_salvaged." + args.container
         fname = ask("output filename", "Name of the fixed output file. "
                     "The extension sets the container (e.g. .mkv, .mp4).",
                     default_name)
@@ -866,7 +866,7 @@ def main():
             ok = True
             if args.mode == "repair":
                 base = os.path.splitext(os.path.basename(v))[0]
-                out_path = os.path.join(out_dir, base + "." + args.container)
+                out_path = os.path.join(out_dir, base + "_salvaged." + args.container)
                 ok = dispatch_fix(v, out_path, args, info)
             results.append(info)
         print(f"\n=== BATCH SUMMARY ({len(results)} files, mode={args.mode}) ===")
@@ -882,7 +882,7 @@ def main():
             base = os.path.splitext(os.path.basename(args.input))[0]
             out_dir = args.out_dir or os.path.dirname(os.path.abspath(args.input))
             os.makedirs(out_dir, exist_ok=True)
-            fname = getattr(args, "output_name", None) or (base + "." + args.container)
+            fname = getattr(args, "output_name", None) or (base + "_salvaged." + args.container)
             out_path = safe_output_path(args.input, out_dir, fname, args)
             dispatch_fix(args.input, out_path, args, info)
             print_report(info)
