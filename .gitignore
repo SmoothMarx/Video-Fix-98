@@ -21,3 +21,6 @@ __pycache__/
 /tmp/
 bin/win/*.exe
 dist/
+.venv/
+__pycache__/
+.pytest_cache/
