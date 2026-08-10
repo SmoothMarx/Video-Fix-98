@@ -279,14 +279,6 @@ def build_filter(good, fps, resolution=None):
     return chain
 
 
-def audio_args(mode):
-    if mode == "off":
-        return ["-an"]
-    if mode == "copy":
-        return []
-    if mode == "aac":
-        return ["-c:a", "aac", "-b:a", "128k"]
-    return ["-an"]
 
 
 def analyze(path, args):
@@ -564,29 +556,38 @@ def repair_one(path, output_path, args, info):
     vf = build_filter(good, args.fps, getattr(args, "resolution", None))
     cmd = ["ffmpeg", "-v", "error", "-i", path, "-vf", vf,
            "-c:v", CODECS[args.codec], "-preset", args.preset,
-           "-crf", str(args.crf), "-r", str(args.fps)]
-    cmd += audio_args(args.audio_mode)
-    cmd += ["-y", output_path]
+           "-crf", str(args.crf), "-r", str(args.fps),
+           "-an", "-y", output_path]
 
     print(f"  repairing ({args.codec} / {args.container} / audio {args.audio_mode})...")
     ok, stderr_out = run_with_progress(cmd, info["estimated_duration"], gui=args.gui)
     if not os.path.exists(output_path):
         print("  ERROR: no output produced")
         print(stderr_out[-500:])
+        info["verdict"] = "FAILED"
+        return False
+
+    # If audio was requested, mux it from the source into the output
+    if args.audio_mode != "off":
+        from shutil import move as _move
+        tmp = output_path + ".tmp_video." + args.container
+        _move(output_path, tmp)
+        mux_cmd = ["ffmpeg", "-v", "error", "-i", tmp, "-i", path,
+                   "-map", "0:v", "-map", "1:a?"]
         if args.audio_mode == "copy":
-            print("  audio 'copy' failed — retrying with audio off")
-            cmd2 = [x for x in cmd if x not in ("-an", "-c:a", "copy", "aac",
-                                                "-b:a", "128k")]
-            cmd2.insert(cmd2.index("-vf") + 1, "-an")
-            ok2, o2 = run_with_progress(cmd2, info["estimated_duration"], gui=args.gui)
-            if not os.path.exists(output_path):
-                print("  ERROR: retry also failed")
-                print(o2[-500:])
-                info["verdict"] = "FAILED"
-                return False
-        else:
-            info["verdict"] = "FAILED"
-            return False
+            mux_cmd += ["-c:a", "copy"]
+        else:  # aac
+            mux_cmd += ["-c:a", "aac", "-b:a", "128k"]
+        mux_cmd += ["-y", output_path]
+        print("  muxing audio...")
+        ok2, o2 = run_with_progress(mux_cmd, info["estimated_duration"], gui=args.gui)
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        if not os.path.exists(output_path):
+            print("  ERROR: audio mux failed — keeping video-only")
+            _move(tmp, output_path)
 
     out_frozen, _ = find_frozen_pts(output_path, args.min_freeze, args.noise)
     of = sum(e - s for (s, e) in out_frozen)

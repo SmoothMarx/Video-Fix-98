@@ -409,13 +409,6 @@ class SalvageGUI:
         self._build_center_pane(panes)
         self._build_watch_pane(panes)
 
-        # very bottom of the window: Help | About | Quit strip
-        strip = tk.Frame(body, bg=BG)
-        strip.pack(fill="x", padx=4, pady=(0, 4))
-        for label, cb in (("Help", self._help), ("About", self._about),
-                          ("Quit", self.root.destroy)):
-            tk.Button(strip, text=label, bg=BTNFACE, font=FONT, relief="raised",
-                      bd=2, padx=10, command=cb).pack(side="left", padx=2)
 
     def _build_bottom_bar(self, parent):
         """Logo centered + (status + Run + Stop) right-aligned."""
@@ -423,17 +416,14 @@ class SalvageGUI:
         bottom.pack(fill="x", padx=2, pady=(2, 2))
         self._bottom = bottom  # for progress-bar insertion later
 
-        # left spacer — expands to push logo to visual center
-        tk.Frame(bottom, bg=BG).pack(side="left", fill="x", expand=True)
-
-        # centered logo
+        # centered logo (place handles true centering)
         logo = small_logo(self.root, width=96)
         if logo:
             lbl = tk.Label(bottom, image=logo, bg=BG)
             lbl.image = logo
         else:
             lbl = tk.Label(bottom, text="Video-Fix-98", bg=BG, font=FONT_BOLD)
-        lbl.pack(side="left")
+        lbl.place(relx=0.5, rely=0.5, anchor="center")
 
         # right cluster: estimate → status → Run → Stop
         right = tk.Frame(bottom, bg=BG)
@@ -484,7 +474,7 @@ class SalvageGUI:
         self.check_btn = tk.Button(row2, text="Check", command=self._check_all,
                                    bg="#00A000", fg="#FFFFFF",
                                    font=FONT_BOLD, relief="raised", bd=2, padx=6)
-        self.check_btn.pack(side="left", padx=(4, 0))
+        self.check_btn.pack(side="right", padx=(4, 0))
 
     def _build_center_pane(self, parent):
         center = tk.Frame(parent, bg=BG)
@@ -596,6 +586,18 @@ class SalvageGUI:
         self.watch_list.pack(fill="both", expand=True, padx=4, pady=2)
         self.watch_count = tk.Label(w, text="0 files", bg=BG, font=FONT, anchor="w")
         self.watch_count.pack(fill="x", padx=6, pady=(0, 4))
+
+        # Help | About | Quit — equidistant across sidebar width
+        help_row = tk.Frame(w, bg=BG)
+        help_row.pack(fill="x", padx=4, pady=(4, 4))
+        help_row.grid_columnconfigure(0, weight=1, uniform="h")
+        help_row.grid_columnconfigure(1, weight=1, uniform="h")
+        help_row.grid_columnconfigure(2, weight=1, uniform="h")
+        for i, (label, cb) in enumerate((("Help", self._help),
+                                          ("About", self._about),
+                                          ("Quit", self.root.destroy))):
+            tk.Button(help_row, text=label, bg=BTNFACE, font=FONT, relief="raised",
+                      bd=2, padx=4, command=cb).grid(row=0, column=i, sticky="ew", padx=1)
 
         self._watch_tick()
 
@@ -925,6 +927,8 @@ class SalvageGUI:
                   bg=RUN_GREEN, fg="#FFFFFF", font=FONT_BOLD,
                   relief="raised", bd=3, padx=16, pady=6,
                   activebackground="#00B000").pack(side="left")
+        tk.Button(footer, text="Save As...", command=self._save_session_as,
+                  bg=BTNFACE, font=FONT, relief="raised", bd=2, padx=12, pady=2).pack(side="left", padx=(4, 0))
         tk.Button(footer, text="Close", command=win.destroy,
                   bg=BTNFACE, font=FONT, relief="raised", bd=2, padx=12, pady=2).pack(side="right")
 
@@ -966,6 +970,27 @@ class SalvageGUI:
                 json.dump(data, f)
         except Exception:
             pass
+
+    def _save_session_as(self):
+        """Export check results to a user-chosen JSON file."""
+        path = filedialog.asksaveasfilename(
+            title="Save check results",
+            defaultextension=".json",
+            initialfile="vf98_check_results.json",
+            filetypes=[("JSON files", "*.json")])
+        if not path:
+            return
+        try:
+            data = {
+                "files": list(self._check_results.keys()),
+                "results": self._check_results,
+                "checked": list(self._checked_files),
+            }
+            with open(path, "w") as f:
+                json.dump(data, f)
+            self._log(f"\ncheck results saved: {path}\n")
+        except Exception as e:
+            messagebox.showerror("Video-Fix-98", f"Could not save:\n{e}")
 
     def _import_session(self):
         """Load a previously saved session JSON chosen by the user."""
