@@ -426,6 +426,11 @@ def untrunc_one(path, output_path, args, info):
     import shutil
     untrunc = shutil.which("untrunc")
     if not untrunc:
+        # self-contained installs keep untrunc next to the tool
+        local = os.path.join(os.path.dirname(os.path.abspath(__file__)), "untrunc")
+        if os.path.exists(local) and os.access(local, os.X_OK):
+            untrunc = local
+    if not untrunc:
         print("  ERROR: 'untrunc' binary not found on PATH "
               "(run setup.sh or install it)")
         info["verdict"] = "FAILED (untrunc missing)"
