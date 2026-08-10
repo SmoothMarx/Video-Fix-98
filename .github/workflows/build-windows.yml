@@ -39,7 +39,7 @@ jobs:
         shell: bash
         run: |
           curl -sL -o untrunc.zip \
-            "https://github.com/anthwlock/untrunc/releases/latest/download/untrunc_windows_x86_64.zip" \
+            "https://github.com/anthwlock/untrunc/releases/latest/download/untrunc_x64.zip" \
             || true
           if [ -f untrunc.zip ]; then
             unzip -o untrunc.zip -d untrunc-tmp || true
