@@ -250,11 +250,38 @@ def normalize_noise(value):
     return f"-{num:.0f}dB"
 
 
-def find_frozen_pts(path, min_freeze, noise_db):
-    """freezedetect pass. Returns (frozen_intervals, raw_log)."""
-    out = run(["ffmpeg", "-v", "info", "-i", path,
-               "-vf", f"freezedetect=n={noise_db}:d={min_freeze}",
-               "-an", "-f", "null", "-"])
+def _freezedetect_with_progress(cmd, total_duration):
+    """Run ffmpeg freezedetect, emitting VF98PCT progress to stdout."""
+    import subprocess as _sp
+    out_lines = []
+    dur_s = total_duration or 60  # fallback estimate
+    proc = _sp.Popen(cmd, stdout=_sp.PIPE, stderr=_sp.STDOUT, text=True, bufsize=1)
+    for line in proc.stdout:
+        out_lines.append(line)
+        m = TIME_RE.search(line)
+        if m:
+            try:
+                t = float(m.group(1))
+                pct = min(100, int(t / dur_s * 100))
+                if dur_s > 0:
+                    print(f"VF98PCT:{pct}", flush=True)
+            except (ValueError, ZeroDivisionError):
+                pass
+    proc.wait()
+    print("VF98PCT:100", flush=True)
+    return "".join(out_lines)
+
+
+def find_frozen_pts(path, min_freeze, noise_db, gui=False, total_duration=None):
+    """freezedetect pass. Returns (frozen_intervals, raw_log).
+    When gui=True, streams VF98PCT progress lines to stdout."""
+    cmd = ["ffmpeg", "-v", "info", "-i", path,
+           "-vf", f"freezedetect=n={noise_db}:d={min_freeze}",
+           "-an", "-f", "null", "-"]
+    if not gui:
+        out = run(cmd)
+    else:
+        out = _freezedetect_with_progress(cmd, total_duration)
     if "SCAN_TIMEOUT_MARKER" in out:
         print("ERROR: freeze scan timed out")
         sys.exit(1)
@@ -316,7 +343,9 @@ def analyze(path, args):
         return info
 
     print(f"  decoding for damage assessment (freezedetect)...")
-    frozen, log = find_frozen_pts(path, args.min_freeze, args.noise)
+    frozen, log = find_frozen_pts(path, args.min_freeze, args.noise,
+                                   gui=getattr(args, "gui", False),
+                                   total_duration=info.get("claimed_duration"))
     frozen_s = sum(e - s for (s, e) in frozen)
     info["frozen_count"] = len(frozen)
     info["frozen_seconds"] = round(frozen_s, 1)

@@ -79,7 +79,7 @@ TITLE_FG = "#FFFFFF"
 RUN_GREEN = "#00A000"    # green Run button
 
 FONT_FAMILY = "MS Sans Serif"   # Windows classic; falls back gracefully
-FONT = (FONT_FAMILY, 8)
+FONT = (FONT_FAMILY, 10)
 FONT_BOLD = (FONT_FAMILY, 8, "bold")
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -636,13 +636,14 @@ class SalvageGUI:
         self._notebook.select(1)  # switch to report tab
 
         cols = [
-            ("checked", "✓", 30), ("file", "File", 120), ("error", "Error", 90),
+            ("checked", "✓", 45), ("file", "File", 120), ("error", "Error", 90),
             ("decodable_pct", "%", 35), ("estimated_size_bytes", "Est.", 50),
             ("verdict", "Verdict", 55),
         ]
         tree = ttk.Treeview(self._report_frame,
                             columns=[c[0] for c in cols],
                             show="headings", height=min(6, len(self._check_results)))
+        ttk.Style().configure("Treeview", rowheight=28)
         for key, label, width in cols:
             tree.heading(key, text=label)
             tree.column(key, width=width, anchor="center" if key != "file" else "w")
@@ -890,15 +891,24 @@ class SalvageGUI:
             self.root.after(0, self._log, f"\n[{i}/{total}] checking {name}...\n")
             try:
                 proc = subprocess.Popen(
-                    [self._runner(), "--mode", "check", "--report",
+                    [self._runner(), "--gui", "--mode", "check", "--report",
                      os.path.join(self._report_dir, f"check_{i}.csv"), src]
                     if getattr(sys, "frozen", False)
-                    else [sys.executable, self._tool_path(), "--mode", "check",
+                    else [sys.executable, self._tool_path(), "--gui", "--mode", "check",
                           "--report", os.path.join(self._report_dir, f"check_{i}.csv"), src],
                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                     text=True, bufsize=1, creationflags=creationflags)
                 for line in proc.stdout:
-                    self.root.after(0, self._log, line)
+                    if line.startswith("VF98PCT:"):
+                        try:
+                            pct = int(line.split(":")[1])
+                            self.root.after(0, lambda p=pct, n=name, j=i, t=total:
+                                self._set_status(
+                                    f"Checking [{j}/{t}] {n} — {p}%"))
+                        except (ValueError, IndexError):
+                            pass
+                    else:
+                        self.root.after(0, self._log, line)
                 proc.wait()
                 # parse the CSV
                 csv_path = os.path.join(self._report_dir, f"check_{i}.csv")
