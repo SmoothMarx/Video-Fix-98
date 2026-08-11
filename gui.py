@@ -1153,6 +1153,21 @@ class SalvageGUI:
         except Exception as e:
             messagebox.showerror("Video-Fix-98", f"Save failed: {e}")
 
+    def _update_estimate(self):
+        """Update the estimate label from checked files' good_seconds total."""
+        checked = [p for p in self._checked_files if p in self._check_results]
+        if not checked:
+            self.est_label.config(text="")
+            return
+        total_s = sum(
+            float(self._check_results[p].get("good_seconds", 0) or 0)
+            for p in checked)
+        mins, secs = divmod(int(total_s), 60)
+        if mins > 0:
+            self.est_label.config(text=f"{len(checked)} checked | {mins}m{secs}s")
+        else:
+            self.est_label.config(text=f"{len(checked)} checked | {secs}s")
+
     def _import_session(self):
         """Load a previously saved session JSON chosen by the user."""
         path = filedialog.askopenfilename(
