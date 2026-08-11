@@ -646,6 +646,10 @@ class SalvageGUI:
                                       anchor="w")
         self.watch_dir_lbl.pack(side="left", padx=(4, 0), fill="x", expand=True)
 
+        self.output_same_as_source = tk.BooleanVar(value=False)
+        tk.Checkbutton(w, text="Same as source folder", variable=self.output_same_as_source,
+                       bg=BG, activebackground=BG, font=FONT).pack(anchor="w", padx=6, pady=(0, 2))
+
         self.watch_list = tk.Listbox(w, bg=SUNKEN_BG, relief="sunken", bd=2,
                                      font=("Courier", 10), selectmode="extended")
         self.watch_list.pack(fill="both", expand=True, padx=4, pady=2)
@@ -704,6 +708,13 @@ class SalvageGUI:
         hdr.pack(fill="x", padx=2, pady=(0, 2))
         tk.Label(hdr, text=f"Check Results — {len(self._check_results)} file(s)",
                  bg=BG, font=FONT_BOLD).pack(side="left")
+        # filter dropdown
+        self._report_filter = tk.StringVar(value="All")
+        flt = ttk.Combobox(hdr, textvariable=self._report_filter,
+                           values=["All", "Corrupt only", "Healthy only"],
+                           state="readonly", width=14, font=FONT)
+        flt.pack(side="left", padx=(8, 0))
+        flt.bind("<<ComboboxSelected>>", lambda e: self._refresh_report_table())
         tk.Button(hdr, text="Repair Checked", command=self._run,
                   bg=RUN_GREEN, fg="#FFFFFF", font=FONT,
                   relief="raised", bd=2, padx=6, pady=1).pack(side="right")
@@ -715,7 +726,14 @@ class SalvageGUI:
         sb.pack(side="right", fill="y", pady=2)
 
         self._check_rows_iid = {}
+        filter_mode = self._report_filter.get() if hasattr(self, "_report_filter") else "All"
         for path, info in self._check_results.items():
+            err = (info.get("error") or "").lower()
+            # apply filter
+            if filter_mode == "Corrupt only" and ("none detected" in err or "clean (quick)" in err):
+                continue
+            if filter_mode == "Healthy only" and "none detected" not in err and "clean (quick)" not in err:
+                continue
             checked = "☑" if path in self._checked_files else "☐"
             gs = info.get("good_seconds", 0)
             if isinstance(gs, (int, float)):
@@ -878,7 +896,8 @@ class SalvageGUI:
         if self.opts["resolution"]:
             cmd += ["--resolution", self.opts["resolution"]]
         if self.out_dir:
-            cmd += ["--out-dir", self.out_dir]
+            out = os.path.dirname(src) if self.output_same_as_source.get() else self.out_dir
+            cmd += ["--out-dir", out]
         if report_path:
             cmd += ["--report", report_path]
         return cmd
@@ -1004,7 +1023,10 @@ class SalvageGUI:
                         rows = list(csv.DictReader(f))
                         if rows:
                             self._check_results[src] = rows[0]
-                            self._checked_files.add(src)
+                            # auto-check only corrupt files; healthy = unchecked
+                            err = rows[0].get("error", "").lower()
+                            if "none detected" not in err and "clean (quick)" not in err.lower():
+                                self._checked_files.add(src)
                             self.root.after(0, self._refresh_report_table)
                             self.root.after(0, self._update_estimate)
                 self.root.after(0, self._log,
