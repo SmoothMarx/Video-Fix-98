@@ -350,7 +350,7 @@ def analyze(path, args):
 
     # Quick skip: if no error signature, fully allocated, and duration > 0,
     # the file is almost certainly healthy — skip the expensive freezedetect.
-    quick = not getattr(args, "no_quick", False)
+    quick = getattr(args, "quick", False)
     if (quick and not info["sparse"]
             and info["error"] == "none detected"
             and info["claimed_duration"] > 0
@@ -815,13 +815,11 @@ def interactive_config(args):
                           "n" if not args.force_pass else "y",
                           convert=lambda v: v.lower() in ("y", "yes"),
                           choices=("y", "n"))
-    args.no_quick = ask("no-quick", "Disable quick check for healthy files? "
-                        "By default, files with no error signature skip the "
-                        "expensive freezedetect pass. Say 'y' to force a full "
-                        "scan on all files.",
-                        "n" if not args.no_quick else "y",
-                        convert=lambda v: v.lower() in ("y", "yes"),
-                        choices=("y", "n"))
+    args.quick = ask("quick", "Skip freezedetect on apparently healthy files? "
+                     "Fast but may miss partial corruption. 'y' or 'n'.",
+                     "n" if not getattr(args, "quick", False) else "y",
+                     convert=lambda v: v.lower() in ("y", "yes"),
+                     choices=("y", "n"))
     args.min_freeze = ask("min-freeze", "How long (seconds) a frozen stretch "
                           "must last before it is trimmed. Lower catches "
                           "short freezes, higher keeps more content.",
@@ -895,10 +893,9 @@ def main():
     ap.add_argument("--force-pass", action="store_true",
                     help="run the full frame pass even on sparse files "
                          "(normally skipped: no data = nothing to examine)")
-    ap.add_argument("--no-quick", action="store_true",
-                    help="disable quick check for healthy files "
-                         "(by default, files with no error signature skip the "
-                         "expensive freezedetect pass)")
+    ap.add_argument("--quick", action="store_true",
+                    help="skip freezedetect on apparently healthy files "
+                         "(fast but may miss partial corruption)")
     ap.add_argument("--recursive", action="store_true",
                     help="when input is a folder, scan subdirectories "
                          "recursively")

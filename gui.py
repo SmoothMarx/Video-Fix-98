@@ -104,10 +104,8 @@ VARIABLE_HELP = [
             "losslessly; 'untrunc' rebuilds a missing moov index."),
     ("Force full pass (sparse)", "Run the full frame pass even on sparse "
             "files. Normally skipped because no data = nothing to examine."),
-    ("Force full pass (healthy)", "Run the full freezedetect pass even on "
-            "apparently healthy files (no error signature, high allocation). "
-            "By default, these skip the expensive scan — check this to "
-            "verify them thoroughly."),
+    ("Quick skip (healthy files)", "Skip freezedetect on apparently healthy "
+            "files. Fast but may miss partial corruption. Off by default."),
     ("CRF (quality)", "Encode quality. LOWER is better quality but a bigger "
             "file. 18 ≈ near-lossless, 23 ≈ standard, 28 ≈ small."),
     ("Preset", "Encoder speed vs size. 'ultrafast' is fastest but bigger; "
@@ -365,7 +363,7 @@ class SalvageGUI:
         self.opts = {
             "fix": "auto",
             "force_pass": False,
-            "force_pass_healthy": False,
+            "quick_skip": False,
             "crf": 20,
             "preset": "veryfast",
             "min_freeze": 2.0,
@@ -565,7 +563,7 @@ class SalvageGUI:
             lambda: self.opts["fix"], lambda v: self.opts.__setitem__("fix", v)))
         self._add_toggle(pre.widget, "Force full pass (sparse)", None,
                          checked=False)
-        self._add_toggle(pre.widget, "Force full pass (healthy)", None,
+        self._add_toggle(pre.widget, "Quick skip (healthy files)", None,
                          checked=False)
         self.import_btn = tk.Button(
             pre.widget, text="Import", command=self._import_session,
@@ -845,8 +843,34 @@ class SalvageGUI:
                 f"Could not read folder:\n{p}")
 
     def _subfolder_toggled(self):
-        if self._last_folder:
-            self._scan_folder(self._last_folder)
+        if not self._last_folder:
+            return
+        if not self.include_subfolders.get():
+            # when unchecking, remove all files that are NOT in the root folder
+            root = os.path.abspath(self._last_folder)
+            to_remove = [p for p in self.source_queue
+                         if os.path.abspath(p).startswith(root + os.sep)]
+            # keep: files that are directly in root (not in subfolders)
+            keep_names = set()
+            try:
+                for name in os.listdir(self._last_folder):
+                    fp = os.path.abspath(os.path.join(self._last_folder, name))
+                    keep_names.add(fp)
+            except OSError:
+                pass
+            to_remove = [p for p in to_remove if os.path.abspath(p) not in keep_names]
+            for p in to_remove:
+                self._queue_remove(p)
+        self._scan_folder(self._last_folder)
+
+    def _queue_remove(self, path):
+        """Remove a single path from source queue and listbox."""
+        try:
+            idx = self.source_queue.index(path)
+            del self.source_queue[idx]
+            self.queue_list.delete(idx)
+        except ValueError:
+            pass
 
     def _queue_add(self, path):
         if path not in self.source_queue:
@@ -938,8 +962,8 @@ class SalvageGUI:
         cmd += ["--audio-mode", self.opts["audio"]]
         if self.opts.get("force_pass"):
             cmd += ["--force-pass"]
-        if self.opts.get("force_pass_healthy"):
-            cmd += ["--no-quick"]
+        if self.opts.get("quick_skip"):
+            cmd += ["--quick"]
         cmd += ["--min-freeze", str(self.opts["min_freeze"])]
         # equals-form so a leading '-' (e.g. -60dB) isn't parsed as a flag
         cmd += [f"--noise={self.opts['noise']}"]
