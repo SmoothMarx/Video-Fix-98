@@ -482,15 +482,16 @@ class SalvageGUI:
         lbl.place(relx=0.5, rely=0.5, anchor="center")
         lbl.bind("<Button-1>", lambda e: self._about())
 
-        # right cluster: Run → Stop
+        # right cluster: Stop | Pause | Run (top to bottom)
         right = tk.Frame(bottom, bg=BG)
         right.pack(side="right")
-        self.run_btn = tk.Button(right, text="\u25B6  Run", command=self._run,
-                                 bg=RUN_GREEN, fg="#FFFFFF",
-                                 font=(FONT_FAMILY, 12, "bold"),
-                                 relief="raised", bd=3, padx=28, pady=14,
-                                 activebackground="#00B000")
-        self.run_btn.pack(side="top", fill="x")
+        self.stop_btn = tk.Button(right, text="\U0001F6D1  Stop", command=self._stop,
+                                  bg="#CC0000", fg="#FFFFFF",
+                                  font=(FONT_FAMILY, 12, "bold"),
+                                  relief="raised", bd=3, padx=28, pady=6,
+                                  activebackground="#DD0000",
+                                  state="disabled")
+        self.stop_btn.pack(side="top", fill="x")
         self.pause_btn = tk.Button(right, text="⏸  Pause", command=self._pause,
                                    bg="#CC8800", fg="#FFFFFF",
                                    font=(FONT_FAMILY, 12, "bold"),
@@ -498,13 +499,12 @@ class SalvageGUI:
                                    activebackground="#DD9900",
                                    state="disabled")
         self.pause_btn.pack(side="top", fill="x", pady=(4, 0))
-        self.stop_btn = tk.Button(right, text="\u25A0  Stop", command=self._stop,
-                                  bg="#CC0000", fg="#FFFFFF",
-                                  font=(FONT_FAMILY, 12, "bold"),
-                                  relief="raised", bd=3, padx=28, pady=6,
-                                  activebackground="#DD0000",
-                                  state="disabled")
-        self.stop_btn.pack(side="top", fill="x", pady=(4, 0))
+        self.run_btn = tk.Button(right, text="\u25B6  Run", command=self._run,
+                                 bg=RUN_GREEN, fg="#FFFFFF",
+                                 font=(FONT_FAMILY, 12, "bold"),
+                                 relief="raised", bd=3, padx=28, pady=14,
+                                 activebackground="#00B000")
+        self.run_btn.pack(side="top", fill="x", pady=(4, 0))
 
     def _build_source_pane(self, parent):
         box = CategoryBox(parent, " Source ")
@@ -512,7 +512,7 @@ class SalvageGUI:
         w = box.widget
 
         row = tk.Frame(w, bg=BG)
-        row.pack(fill="x", padx=4, pady=4)
+        row.pack(fill="x", padx=4, pady=(8, 4))
         tk.Button(row, text="Add Files...", command=self._add_files, bg=BTNFACE,
                   font=(FONT_FAMILY, 10, "bold"), relief="raised", bd=2, padx=8).pack(side="left")
         tk.Button(row, text="Add Folder...", command=self._add_folder, bg=BTNFACE,
@@ -521,15 +521,18 @@ class SalvageGUI:
         tk.Checkbutton(row, text="Sub-folders", variable=self.include_subfolders,
                        bg=BG, activebackground=BG, font=FONT).pack(side="left", padx=(6, 0))
 
-        self.queue_list = tk.Listbox(w, bg=SUNKEN_BG, relief="sunken", bd=2,
+        # list area (fills remaining space)
+        list_frame = tk.Frame(w, bg=BG)
+        list_frame.pack(fill="both", expand=True, padx=4, pady=2)
+        self.queue_list = tk.Listbox(list_frame, bg=SUNKEN_BG, relief="sunken", bd=2,
                                       font=("Courier", 10), selectmode="extended")
-        sb_source = tk.Scrollbar(w, orient="vertical", command=self.queue_list.yview)
+        sb_source = tk.Scrollbar(list_frame, orient="vertical", command=self.queue_list.yview)
         self.queue_list.configure(yscrollcommand=sb_source.set)
-        self.queue_list.pack(side="left", fill="both", expand=True, padx=(4, 0), pady=2)
-        sb_source.pack(side="right", fill="y", padx=(0, 4), pady=2)
+        self.queue_list.pack(side="left", fill="both", expand=True)
+        sb_source.pack(side="right", fill="y")
         self.queue_list.bind("<Delete>", lambda e: self._remove_selected())
 
-        # bottom section: action buttons, separated from listbox
+        # bottom section: action buttons, outside list area
         bottom_row = tk.Frame(w, bg=BG, bd=0)
         bottom_row.pack(fill="x", padx=4, pady=4, side="bottom")
         tk.Button(bottom_row, text="Remove", command=self._remove_selected, bg=BTNFACE,
@@ -626,13 +629,13 @@ class SalvageGUI:
         self.log.pack(side="left", fill="both", expand=True, padx=(2, 0))
         self._notebook.add(log_frame, text="Progress Log")
 
-        # Report tab (always visible)
+        # Verification tab (always visible)
         self._build_report_section(self._notebook)
-        self._notebook.add(self._report_frame, text="Report")
+        self._notebook.add(self._report_frame, text="Verification")
 
-        # Results tab (populated after repair)
+        # Repair tab (populated after repair)
         self._results_frame = tk.Frame(self._notebook, bg=BG)
-        self._notebook.add(self._results_frame, text="Results")
+        self._notebook.add(self._results_frame, text="Repair")
 
         # progress bar — native green, below the log, in center column
         style = ttk.Style()
@@ -659,7 +662,7 @@ class SalvageGUI:
         w = box.widget
 
         row = tk.Frame(w, bg=BG)
-        row.pack(fill="x", padx=4, pady=4)
+        row.pack(fill="x", padx=4, pady=(8, 4))
         tk.Button(row, text="Browse...", command=self._browse_out, bg=BTNFACE,
                   font=(FONT_FAMILY, 10, "bold"), relief="raised", bd=2, padx=8).pack(side="left")
         default_name = os.path.basename(self.out_dir) if self.out_dir else "(not set)"
@@ -671,12 +674,15 @@ class SalvageGUI:
         tk.Checkbutton(w, text="Same as source folder", variable=self.output_same_as_source,
                        bg=BG, activebackground=BG, font=FONT).pack(anchor="w", padx=6, pady=(0, 2))
 
-        self.watch_list = tk.Listbox(w, bg=SUNKEN_BG, relief="sunken", bd=2,
+        # list area
+        wlist_frame = tk.Frame(w, bg=BG)
+        wlist_frame.pack(fill="both", expand=True, padx=4, pady=2)
+        self.watch_list = tk.Listbox(wlist_frame, bg=SUNKEN_BG, relief="sunken", bd=2,
                                      font=("Courier", 10), selectmode="extended")
-        sb_watch = tk.Scrollbar(w, orient="vertical", command=self.watch_list.yview)
+        sb_watch = tk.Scrollbar(wlist_frame, orient="vertical", command=self.watch_list.yview)
         self.watch_list.configure(yscrollcommand=sb_watch.set)
-        self.watch_list.pack(side="left", fill="both", expand=True, padx=(4, 0), pady=2)
-        sb_watch.pack(side="right", fill="y", padx=(0, 4), pady=2)
+        self.watch_list.pack(side="left", fill="both", expand=True)
+        sb_watch.pack(side="right", fill="y")
         self.watch_count = tk.Label(w, text="0 files", bg=BG, font=FONT, anchor="w")
         self.watch_count.pack(fill="x", padx=6, pady=(0, 4))
 
