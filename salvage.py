@@ -790,6 +790,19 @@ def interactive_config(args):
     args.audio_mode = ask("audio-mode", "Audio handling: 'off' drops audio, "
                           "'copy' keeps it if decodable, 'aac' re-encodes it.",
                           args.audio_mode, choices=AUDIO_MODES)
+    args.force_pass = ask("force-pass", "Run the full freezedetect pass even "
+                          "on sparse files (normally skipped — no data = "
+                          "nothing to examine). 'y' or 'n'.",
+                          "n" if not args.force_pass else "y",
+                          convert=lambda v: v.lower() in ("y", "yes"),
+                          choices=("y", "n"))
+    args.no_quick = ask("no-quick", "Disable quick check for healthy files? "
+                        "By default, files with no error signature skip the "
+                        "expensive freezedetect pass. Say 'y' to force a full "
+                        "scan on all files.",
+                        "n" if not args.no_quick else "y",
+                        convert=lambda v: v.lower() in ("y", "yes"),
+                        choices=("y", "n"))
     args.min_freeze = ask("min-freeze", "How long (seconds) a frozen stretch "
                           "must last before it is trimmed. Lower catches "
                           "short freezes, higher keeps more content.",
@@ -870,7 +883,7 @@ def main():
                     help=f"output container: {', '.join(CONTAINERS)} (default mkv)")
     ap.add_argument("--codec", choices=CODECS.keys(), default="h264",
                     help=f"video codec: {', '.join(CODECS)} (default h264)")
-    ap.add_argument("--audio-mode", choices=AUDIO_MODES, default="off",
+    ap.add_argument("--audio-mode", choices=AUDIO_MODES, default="copy",
                     help="audio: off (drop), copy (keep if decodable), aac (re-encode 128k). default off")
     ap.add_argument("--min-freeze", type=float, default=2.0,
                     help="min freeze length to trim, seconds (default 2.0)")
