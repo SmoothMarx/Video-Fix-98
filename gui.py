@@ -45,6 +45,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import traceback
 
 # ---- early crash guard (catches import-time failures) ---------------------
@@ -386,6 +387,7 @@ class SalvageGUI:
             self.out_dir = ""
         self.running = False
         self._stopping = False
+        self._paused = False
         self._resizing = False
         self._check_results = {}
         self._checked_files = set()
@@ -486,9 +488,15 @@ class SalvageGUI:
                                   font=(FONT_FAMILY, 12, "bold"),
                                   relief="raised", bd=3, padx=28, pady=6,
                                   activebackground="#DD0000")
-        # hidden until a run starts
         self.stop_btn.pack(side="top", pady=(4, 0))
         self.stop_btn.pack_forget()
+        self.pause_btn = tk.Button(right, text="⏸  Pause", command=self._pause,
+                                   bg="#CC8800", fg="#FFFFFF",
+                                   font=(FONT_FAMILY, 12, "bold"),
+                                   relief="raised", bd=3, padx=28, pady=6,
+                                   activebackground="#DD9900")
+        self.pause_btn.pack(side="top", pady=(4, 0))
+        self.pause_btn.pack_forget()
 
     def _build_source_pane(self, parent):
         box = CategoryBox(parent, " Source ")
@@ -810,7 +818,20 @@ class SalvageGUI:
     def _queue_add(self, path):
         if path not in self.source_queue:
             self.source_queue.append(path)
-            self.queue_list.insert("end", os.path.basename(path))
+            self.queue_list.insert("end", self._list_display(path))
+
+    def _list_display(self, path, width=30):
+        """Show filename with ✓ if checked, truncated for listbox width."""
+        name = os.path.basename(path)
+        marker = "✓ " if path in self._check_results else "  "
+        text = marker + name
+        return text[:width]
+
+    def _refresh_list_display(self):
+        """Rebuild listbox to show checkmarks after Check completes."""
+        self.queue_list.delete(0, "end")
+        for p in self.source_queue:
+            self.queue_list.insert("end", self._list_display(p))
 
     def _remove_selected(self):
         sel = list(self.queue_list.curselection())
@@ -933,6 +954,7 @@ class SalvageGUI:
         self.running = True
         self.run_btn.config(state="disabled")
         self.stop_btn.pack(side="top", pady=(4, 0))
+        self.pause_btn.pack(side="top", pady=(4, 0))
         self._set_status("Starting...")
         self._report_dir = tempfile.mkdtemp(prefix="vf98_reports_")
         self._log(f"\n--- starting {len(queue)} item(s) ---\n")
@@ -945,6 +967,16 @@ class SalvageGUI:
         if hasattr(self, "_proc") and self._proc and self._proc.poll() is None:
             self._proc.terminate()
             self._log("\n--- STOPPED by user ---\n")
+
+    def _pause(self):
+        """Pause after current file completes. Toggle to resume."""
+        self._paused = not self._paused
+        if self._paused:
+            self._log("\n--- PAUSED (will stop after current file) ---\n")
+            self.pause_btn.config(text="▶  Resume", bg="#00A000")
+        else:
+            self._log("\n--- RESUMED ---\n")
+            self.pause_btn.config(text="⏸  Pause", bg="#CC8800")
 
     # ------------------------------------------------------- check workflow
     def _confirm_large_batch(self, mode):
@@ -974,10 +1006,21 @@ class SalvageGUI:
         self._stopping = False
         self.check_btn.config(state="disabled")
         self.run_btn.config(state="disabled")
+        self.stop_btn.pack(side="top", pady=(4, 0))
+        self.pause_btn.pack(side="top", pady=(4, 0))
+        # if session was loaded, skip already-checked files
+        existing = {p for p in self.source_queue if p in self._check_results}
         self._check_results = {}
         self._checked_files = set()
         self._set_status("Checking...")
-        self._log("\n--- checking " + str(len(self.source_queue)) + " file(s) ---\n")
+        check_queue = [p for p in self.source_queue if p not in existing]
+        if existing:
+            self._log(f"\n{len(existing)} file(s) already checked — skipping\n")
+        if not check_queue:
+            self._log("\nAll files already checked.\n")
+            self._check_done()
+            return
+        self._log("\n--- checking " + str(len(check_queue)) + " file(s) ---\n")
         self.root.after(0, lambda: self.progress.pack(
             fill="x", padx=4, pady=(4, 4), before=self._bottom))
         self.root.after(0, lambda: self.progress.configure(value=0))
@@ -988,6 +1031,10 @@ class SalvageGUI:
         creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
         total = len(self.source_queue)
         for i, src in enumerate(self.source_queue, 1):
+            if self._stopping:
+                break
+            while self._paused and not self._stopping:
+                time.sleep(0.3)
             if self._stopping:
                 break
             name = os.path.basename(src)
@@ -1039,9 +1086,12 @@ class SalvageGUI:
         self.running = False
         self.check_btn.config(state="normal")
         self.run_btn.config(state="normal")
+        self.stop_btn.pack_forget()
+        self.pause_btn.pack_forget()
         self.root.after(0, self.progress.pack_forget)
         n = len(self._check_results)
         if n > 0:
+            self._refresh_list_display()
             self._set_status(f"Check complete: {n} file(s)")
             self._save_session()
             self._update_estimate()
@@ -1167,6 +1217,10 @@ class SalvageGUI:
         for i, src in enumerate(queue, 1):
             if self._stopping:
                 break
+            while self._paused and not self._stopping:
+                time.sleep(0.3)
+            if self._stopping:
+                break
             name = os.path.basename(src)
             self.root.after(0, self._set_status, f"Running [{i}/{total}] {name}")
             report_path = os.path.join(self._report_dir, f"report_{i}.csv")
@@ -1239,6 +1293,7 @@ class SalvageGUI:
         self.running = False
         self.run_btn.config(state="normal")
         self.stop_btn.pack_forget()
+        self.pause_btn.pack_forget()
         self._set_status(msg)
         self._log("\n" + msg + "\n")
         self._save_session()
