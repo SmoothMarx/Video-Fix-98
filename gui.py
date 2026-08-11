@@ -1060,6 +1060,8 @@ class SalvageGUI:
                 "files": list(self._check_results.keys()),
                 "results": self._check_results,
                 "checked": list(self._checked_files),
+                "source_queue": self.source_queue,
+                "out_dir": self.out_dir,
             }
             with open(self._session_path(), "w") as f:
                 json.dump(data, f)
@@ -1067,11 +1069,11 @@ class SalvageGUI:
             pass
 
     def _save_session_as(self):
-        """Export check results to a user-chosen JSON file."""
+        """Export full session to a user-chosen JSON file."""
         path = filedialog.asksaveasfilename(
-            title="Save check results",
+            title="Save session",
             defaultextension=".json",
-            initialfile="vf98_check_results.json",
+            initialfile="vf98_session.json",
             filetypes=[("JSON files", "*.json")])
         if not path:
             return
@@ -1080,12 +1082,14 @@ class SalvageGUI:
                 "files": list(self._check_results.keys()),
                 "results": self._check_results,
                 "checked": list(self._checked_files),
+                "source_queue": self.source_queue,
+                "out_dir": self.out_dir,
             }
             with open(path, "w") as f:
                 json.dump(data, f)
-            self._log(f"\ncheck results saved: {path}\n")
+            self._log(f"\nsession saved: {path}\n")
         except Exception as e:
-            messagebox.showerror("Video-Fix-98", f"Could not save:\n{e}")
+            messagebox.showerror("Video-Fix-98", f"Save failed: {e}")
 
     def _import_session(self):
         """Load a previously saved session JSON chosen by the user."""
@@ -1099,6 +1103,17 @@ class SalvageGUI:
                 data = json.load(f)
             self._check_results = data.get("results", {})
             self._checked_files = set(data.get("checked", self._check_results.keys()))
+            # restore source queue and output folder if present
+            sq = data.get("source_queue", [])
+            if sq:
+                self.source_queue.clear()
+                self.queue_list.delete(0, "end")
+                for p in sq:
+                    self._queue_add(p)
+            od = data.get("out_dir", "")
+            if od:
+                self.out_dir = od
+                self._watch_refresh()
             if self._check_results:
                 self._update_estimate()
                 self._set_status(f"Imported: {len(self._check_results)} file(s)")
@@ -1118,6 +1133,16 @@ class SalvageGUI:
             self._checked_files = set(data.get("checked", []))
             # verify files still exist
             self._checked_files = {p for p in self._checked_files if p in self._check_results}
+            # restore source queue and output folder
+            sq = data.get("source_queue", [])
+            if sq:
+                for p in sq:
+                    if p not in self.source_queue:
+                        self._queue_add(p)
+            od = data.get("out_dir", "")
+            if od:
+                self.out_dir = od
+                self._watch_refresh()
             if self._check_results:
                 self._update_estimate()
                 self._set_status(f"Session loaded: {len(self._check_results)} file(s)")
