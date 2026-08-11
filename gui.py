@@ -369,7 +369,7 @@ class SalvageGUI:
             "codec": "h264",
             "fps": 50,
             "resolution": "",
-            "audio": "off",
+            "audio": "copy",
         }
         self.source_queue = []
         out = os.path.join(os.path.dirname(os.path.abspath(sys.executable)),
