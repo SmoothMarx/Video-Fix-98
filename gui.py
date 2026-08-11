@@ -360,7 +360,7 @@ class SalvageGUI:
         root.configure(bg=BG)
         root.resizable(True, True)
         self._set_icon(root)
-        root.geometry("1040x740")
+        root.geometry("1120x780")
 
         self.opts = {
             "fix": "auto",
@@ -454,7 +454,7 @@ class SalvageGUI:
         panes.pack(fill="both", expand=True)
 
         source_frame = tk.Frame(panes, bg=BG)
-        panes.add(source_frame, width=250, minsize=140)
+        panes.add(source_frame, width=280, minsize=160)
         self._build_source_pane(source_frame)
 
         center_frame = tk.Frame(panes, bg=BG)
@@ -462,7 +462,7 @@ class SalvageGUI:
         self._build_center_pane(center_frame)
 
         watch_frame = tk.Frame(panes, bg=BG)
-        panes.add(watch_frame, width=260, minsize=140)
+        panes.add(watch_frame, width=280, minsize=160)
         self._build_watch_pane(watch_frame)
 
 
@@ -547,7 +547,7 @@ class SalvageGUI:
                   font=(FONT_FAMILY, 10, "bold"), relief="raised", bd=2, padx=12, pady=8).pack(side="left", padx=(6, 0))
         self.check_btn = tk.Button(bottom_row, text="Check", command=self._check_all,
                                    bg="#00A000", fg="#FFFFFF",
-                                   font=(FONT_FAMILY, 10, "bold"), relief="raised", bd=2, padx=12, pady=20)
+                                   font=(FONT_FAMILY, 10, "bold"), relief="raised", bd=2, padx=18, pady=20)
         self.check_btn.pack(side="right", padx=(4, 0))
 
     def _build_center_pane(self, parent):
