@@ -522,6 +522,8 @@ class SalvageGUI:
         sub_row = tk.Frame(w, bg=BG)
         sub_row.pack(fill="x", padx=4, pady=(0, 2))
         self.include_subfolders = tk.BooleanVar(value=False)
+        self._last_folder = None
+        self.include_subfolders.trace_add("write", lambda *a: self._subfolder_toggled())
         tk.Checkbutton(sub_row, text="Sub-folders", variable=self.include_subfolders,
                        bg=BG, activebackground=BG, font=FONT).pack(side="left", padx=2)
 
@@ -687,7 +689,7 @@ class SalvageGUI:
         self.watch_list.configure(yscrollcommand=sb_watch.set)
         self.watch_list.pack(side="left", fill="both", expand=True)
         sb_watch.pack(side="right", fill="y")
-        self.watch_count = tk.Label(w, text="0 files", bg=BG, font=FONT, anchor="w")
+        self.watch_count = tk.Label(w, text="0 files", bg=BG, font=FONT, anchor="e")
         self.watch_count.pack(fill="x", padx=6, pady=(0, 4))
 
         # Help | Exit — equidistant across sidebar width
@@ -749,9 +751,6 @@ class SalvageGUI:
                            state="readonly", width=14, font=FONT)
         flt.pack(side="left", padx=(8, 0))
         flt.bind("<<ComboboxSelected>>", lambda e: self._refresh_report_table())
-        tk.Button(hdr, text="Repair Checked", command=self._run,
-                  bg=RUN_GREEN, fg="#FFFFFF", font=FONT,
-                  relief="raised", bd=2, padx=6, pady=1).pack(side="right")
         tk.Button(hdr, text="Save As...", command=self._save_session_as,
                   bg=BTNFACE, font=FONT, relief="raised",
                   bd=2, padx=6, pady=1).pack(side="right", padx=(4, 0))
@@ -827,19 +826,27 @@ class SalvageGUI:
     def _add_folder(self):
         p = filedialog.askdirectory(title="Add source folder")
         if p:
-            try:
-                if self.include_subfolders.get():
-                    for root, _dirs, files in os.walk(p):
-                        for name in sorted(files):
-                            if os.path.splitext(name)[1].lower() in VIDEO_EXTS:
-                                self._queue_add(os.path.join(root, name))
-                else:
-                    for name in sorted(os.listdir(p)):
+            self._last_folder = p
+            self._scan_folder(p)
+
+    def _scan_folder(self, p):
+        try:
+            if self.include_subfolders.get():
+                for root, _dirs, files in os.walk(p):
+                    for name in sorted(files):
                         if os.path.splitext(name)[1].lower() in VIDEO_EXTS:
-                            self._queue_add(os.path.join(p, name))
-            except OSError:
-                messagebox.showerror("Video-Fix-98",
-                    f"Could not read folder:\n{p}")
+                            self._queue_add(os.path.join(root, name))
+            else:
+                for name in sorted(os.listdir(p)):
+                    if os.path.splitext(name)[1].lower() in VIDEO_EXTS:
+                        self._queue_add(os.path.join(p, name))
+        except OSError:
+            messagebox.showerror("Video-Fix-98",
+                f"Could not read folder:\n{p}")
+
+    def _subfolder_toggled(self):
+        if self._last_folder:
+            self._scan_folder(self._last_folder)
 
     def _queue_add(self, path):
         if path not in self.source_queue:
