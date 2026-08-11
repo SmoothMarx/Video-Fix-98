@@ -61,8 +61,16 @@ jobs:
       - name: Build salvage.exe
         run: pyinstaller --clean salvage.spec
 
-      - name: Build Video-Fix-98.exe
+      - name: Build Video-Fix-98 onefile (default)
         run: pyinstaller --clean video-fix-98.spec
+
+      - name: Build Video-Fix-98 onedir (no AV false positive)
+        run: |
+          pyinstaller --clean --onedir --name "Video-Fix-98-NoAV" --add-data "assets;assets" `
+            --add-binary "bin/win/*;." --icon assets/icon.ico --windowed `
+            --hidden-import tkinter --hidden-import tkinter.ttk gui.py
+          Compress-Archive -Path "dist/Video-Fix-98-NoAV/*" `
+            -DestinationPath "dist/Video-Fix-98-NoAV.zip"
 
       - name: Verify exes
         shell: bash
@@ -82,8 +90,9 @@ jobs:
           TAG="${GITHUB_REF#refs/tags/}"
           NOTES="Self-contained Windows binaries:
           - salvage.exe: CLI tool (bundles ffmpeg/ffprobe/untrunc)
-          - Video-Fix-98.exe: GUI app (bundles salvage.exe + assets)
-          Double-click Video-Fix-98.exe to launch."
+          - Video-Fix-98.exe: GUI app, onefile (bundles salvage.exe + assets)
+          - Video-Fix-98-NoAV.zip: GUI app, onedir — No AV False Positive
+            (unzip and double-click Video-Fix-98-NoAV.exe inside)"
           # delete any existing release for this tag (re-trigger safety) — but
           # NOT the tag itself, so the push trigger isn't consumed.
           if gh release view "$TAG" >/dev/null 2>&1; then
@@ -93,6 +102,7 @@ jobs:
           gh release create "$TAG" \
             dist/salvage.exe \
             dist/Video-Fix-98.exe \
+            dist/Video-Fix-98-NoAV.zip \
             --title "Video-Fix-98 — Windows $TAG" \
             --notes "$NOTES"
           echo "=== release created, verifying assets ==="
