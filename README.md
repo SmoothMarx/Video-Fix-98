@@ -58,35 +58,15 @@ The GUI runs in a browser via noVNC. Drop files in `input/`, repaired files land
 
 ---
 
-## 🧠 The story: why would you even need this?
+## 🧠 The story
 
-You're digging through an old hard drive. A backup from 2015. There's a folder
-called "Family Videos" with 87 files — some play fine, some stutter and freeze
-after 15 seconds, some won't open at all. You know there's real footage in
-there. Birthday parties. Your kid's first steps. You just can't watch it.
+You're digging through an old hard drive — 87 videos from 2015. Some freeze.
+Some won't open. Or maybe it's a half-downloaded torrent. Or a WhatsApp clip
+that arrived at 2MB instead of 20MB.
 
-Or maybe it's a Linux ISO you were torrenting last week. The download got to
-64% before the seeder vanished. Your torrent client says it's "complete" but
-VLC freezes on frame 3. The file is 800MB of data — maybe 500 of it is good.
-You don't want to re-download it. You just want the good 500MB.
-
-Or maybe someone sent you a video on WhatsApp that "arrived" at 2.3MB instead
-of 23MB. It opens — sort of. The first 8 seconds play, then it freezes, but the
-audio keeps going. The rest of the clip is there, just... stuck.
-
-**These are all the same problem:** the file has real content buried inside
-corruption. The decoder freezes on the last good frame (error concealment) and
-you lose everything after.
-
-**Video-Fix-98 is the corrupt detective.** You point it at a folder — any
-folder. It walks through every subfolder, finds every video file, and checks
-each one individually. It tells you exactly what's wrong: "this one has a
-missing index, this one has frozen frames from 12:03 to 18:47, this one is
-healthy." You pick which ones to repair, and it trims off the fat — extracting
-only the decodable frames onto a clean, continuous timeline.
-
-The result is smaller, smooth, and **every frame in it is real content.** No AI.
-No guessing. Just frame-by-frame forensic analysis.
+**Video-Fix-98 is a corrupt detective.** Point it at a folder. It walks every
+subfolder, finds every video, checks each one, tells you what's wrong, and
+trims off the fat — extracting only the real frames onto a clean timeline.
 
 You keep the memories. You drop the corruption.
 
