@@ -512,14 +512,18 @@ class SalvageGUI:
         w = box.widget
 
         row = tk.Frame(w, bg=BG)
-        row.pack(fill="x", padx=4, pady=(8, 4))
+        row.pack(fill="x", padx=4, pady=(8, 2))
         tk.Button(row, text="Add Files...", command=self._add_files, bg=BTNFACE,
-                  font=(FONT_FAMILY, 10, "bold"), relief="raised", bd=2, padx=8).pack(side="left")
+                  font=(FONT_FAMILY, 10, "bold"), relief="raised", bd=2, padx=8, pady=6).pack(side="left")
         tk.Button(row, text="Add Folder...", command=self._add_folder, bg=BTNFACE,
-                  font=(FONT_FAMILY, 10, "bold"), relief="raised", bd=2, padx=8).pack(side="left", padx=(6, 0))
+                  font=(FONT_FAMILY, 10, "bold"), relief="raised", bd=2, padx=8, pady=6).pack(side="left", padx=(6, 0))
+
+        # Sub-folders on its own row below
+        sub_row = tk.Frame(w, bg=BG)
+        sub_row.pack(fill="x", padx=4, pady=(0, 2))
         self.include_subfolders = tk.BooleanVar(value=False)
-        tk.Checkbutton(row, text="Sub-folders", variable=self.include_subfolders,
-                       bg=BG, activebackground=BG, font=FONT).pack(side="left", padx=(6, 0))
+        tk.Checkbutton(sub_row, text="Sub-folders", variable=self.include_subfolders,
+                       bg=BG, activebackground=BG, font=FONT).pack(side="left", padx=2)
 
         # list area (fills remaining space)
         list_frame = tk.Frame(w, bg=BG)
@@ -536,12 +540,12 @@ class SalvageGUI:
         bottom_row = tk.Frame(w, bg=BG, bd=0)
         bottom_row.pack(fill="x", padx=4, pady=4, side="bottom")
         tk.Button(bottom_row, text="Remove", command=self._remove_selected, bg=BTNFACE,
-                  font=(FONT_FAMILY, 10, "bold"), relief="raised", bd=2, padx=10).pack(side="left")
+                  font=(FONT_FAMILY, 10, "bold"), relief="raised", bd=2, padx=12, pady=8).pack(side="left")
         tk.Button(bottom_row, text="Clear", command=self._clear_queue, bg=BTNFACE,
-                  font=(FONT_FAMILY, 10, "bold"), relief="raised", bd=2, padx=10).pack(side="left", padx=(6, 0))
+                  font=(FONT_FAMILY, 10, "bold"), relief="raised", bd=2, padx=12, pady=8).pack(side="left", padx=(6, 0))
         self.check_btn = tk.Button(bottom_row, text="Check", command=self._check_all,
                                    bg="#00A000", fg="#FFFFFF",
-                                   font=(FONT_FAMILY, 10, "bold"), relief="raised", bd=2, padx=10)
+                                   font=(FONT_FAMILY, 10, "bold"), relief="raised", bd=2, padx=12, pady=20)
         self.check_btn.pack(side="right", padx=(4, 0))
 
     def _build_center_pane(self, parent):
