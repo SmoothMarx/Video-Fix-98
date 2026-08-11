@@ -765,6 +765,11 @@ def interactive_config(args):
     args.input = src
 
     is_dir = os.path.isdir(src)
+    if is_dir:
+        args.recursive = ask("recursive", "Scan subdirectories recursively? "
+                             "'y' or 'n'.", "n" if not getattr(args, "recursive", False) else "y",
+                             convert=lambda v: v.lower() in ("y", "yes"),
+                             choices=("y", "n"))
     default_out = args.out_dir or (os.path.join(src, "_salvaged") if is_dir
                                    else os.path.dirname(os.path.abspath(src)))
     out_dir = ask("output folder", "Where the output files go. In batch mode "
@@ -834,11 +839,17 @@ def interactive_config(args):
     return args
 
 
-def list_videos(folder):
+def list_videos(folder, recursive=False):
     vids = []
-    for name in sorted(os.listdir(folder)):
-        if os.path.splitext(name)[1].lower() in VIDEO_EXTS:
-            vids.append(os.path.join(folder, name))
+    if recursive:
+        for root, _dirs, files in os.walk(folder):
+            for name in sorted(files):
+                if os.path.splitext(name)[1].lower() in VIDEO_EXTS:
+                    vids.append(os.path.join(root, name))
+    else:
+        for name in sorted(os.listdir(folder)):
+            if os.path.splitext(name)[1].lower() in VIDEO_EXTS:
+                vids.append(os.path.join(folder, name))
     return vids
 
 
@@ -882,6 +893,9 @@ def main():
                     help="disable quick check for healthy files "
                          "(by default, files with no error signature skip the "
                          "expensive freezedetect pass)")
+    ap.add_argument("--recursive", action="store_true",
+                    help="when input is a folder, scan subdirectories "
+                         "recursively")
     ap.add_argument("--interactive", action="store_true",
                     help="walk through every option step by step, with "
                          "explanations and defaults (blank = keep default)")
@@ -934,7 +948,7 @@ def main():
 
     # ---- collect inputs ----
     if os.path.isdir(args.input):
-        videos = list_videos(args.input)
+        videos = list_videos(args.input, recursive=getattr(args, "recursive", False))
         if not videos:
             print(f"no video files found in {args.input}")
             sys.exit(1)
