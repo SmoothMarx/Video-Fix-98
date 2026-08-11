@@ -947,10 +947,9 @@ def main():
     ap.add_argument("--force-pass", action="store_true",
                     help="run the full frame pass even on sparse files "
                          "(normally skipped: no data = nothing to examine)")
-    ap.add_argument("--strictness", type=int, default=1, choices=range(51),
-                    help="scan thoroughness 0-50. 0=quick (error only), "
-                         "1=full freezedetect, 2-49=N sampled slices, "
-                         "50=three noise passes (default 1)")
+    ap.add_argument("--strictness", type=int, default=1,
+                    help="scan thoroughness 0-50. 0=quick, 1=standard, "
+                         "2-49=samples, 50=paranoid (default 1)")
     ap.add_argument("--recursive", action="store_true",
                     help="when input is a folder, scan subdirectories "
                          "recursively")
