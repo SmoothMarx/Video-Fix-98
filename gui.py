@@ -253,7 +253,7 @@ def splash_icon(root):
         return None
 
 
-def small_logo(root, width=96):
+def small_logo(root, width=120):
     """Returns a downscaled PhotoImage of the logo, or None."""
     if not os.path.exists(LOGO_PATH):
         return None
@@ -360,7 +360,7 @@ class SalvageGUI:
         root.configure(bg=BG)
         root.resizable(True, True)
         self._set_icon(root)
-        root.geometry("900x680")
+        root.geometry("1040x740")
 
         self.opts = {
             "fix": "auto",
@@ -446,7 +446,7 @@ class SalvageGUI:
         panes.pack(fill="both", expand=True)
 
         source_frame = tk.Frame(panes, bg=BG)
-        panes.add(source_frame, width=200, minsize=100)
+        panes.add(source_frame, width=250, minsize=140)
         self._build_source_pane(source_frame)
 
         center_frame = tk.Frame(panes, bg=BG)
@@ -454,18 +454,18 @@ class SalvageGUI:
         self._build_center_pane(center_frame)
 
         watch_frame = tk.Frame(panes, bg=BG)
-        panes.add(watch_frame, width=230, minsize=120)
+        panes.add(watch_frame, width=260, minsize=140)
         self._build_watch_pane(watch_frame)
 
 
     def _build_bottom_bar(self, parent):
         """Logo centered + Run/Stop right-aligned."""
         bottom = tk.Frame(parent, bg=BG)
-        bottom.pack(fill="x", padx=2, pady=(10, 8))
+        bottom.pack(fill="x", padx=2, pady=(14, 12))
         self._bottom = bottom  # for progress-bar insertion later
 
         # logo: placed at true 50%, independent of right cluster width
-        logo = small_logo(self.root, width=96)
+        logo = small_logo(self.root, width=120)
         if logo:
             lbl = tk.Label(bottom, image=logo, bg=BG)
             lbl.image = logo
