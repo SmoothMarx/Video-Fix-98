@@ -344,6 +344,25 @@ def analyze(path, args):
         info["_fix"] = "none"
         return info
 
+    # Quick skip: if no error signature, fully allocated, and duration > 0,
+    # the file is almost certainly healthy — skip the expensive freezedetect.
+    quick = not getattr(args, "no_quick", False)
+    if (quick and not info["sparse"]
+            and info["error"] == "none detected"
+            and info["claimed_duration"] > 0
+            and info["alloc_pct"] > 95.0):
+        info["frozen_count"] = 0
+        info["frozen_seconds"] = 0.0
+        info["good_seconds"] = info["claimed_duration"]
+        info["decodable_pct"] = 100.0
+        info["estimated_duration"] = info["claimed_duration"]
+        info["estimated_size_bytes"] = info["size_bytes"]
+        info["_good"] = [(0.0, info["claimed_duration"])]
+        info["_fix"] = "none"
+        info["verdict"] = "CLEAN (quick)"
+        print("  quick check: no corruption detected — skipping full scan")
+        return info
+
     print(f"  decoding for damage assessment (freezedetect)...")
     frozen, log = find_frozen_pts(path, args.min_freeze, args.noise,
                                    gui=getattr(args, "gui", False),
@@ -838,6 +857,10 @@ def main():
     ap.add_argument("--force-pass", action="store_true",
                     help="run the full frame pass even on sparse files "
                          "(normally skipped: no data = nothing to examine)")
+    ap.add_argument("--no-quick", action="store_true",
+                    help="disable quick check for healthy files "
+                         "(by default, files with no error signature skip the "
+                         "expensive freezedetect pass)")
     ap.add_argument("--interactive", action="store_true",
                     help="walk through every option step by step, with "
                          "explanations and defaults (blank = keep default)")

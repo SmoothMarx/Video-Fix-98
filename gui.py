@@ -103,6 +103,10 @@ VARIABLE_HELP = [
             "losslessly; 'untrunc' rebuilds a missing moov index."),
     ("Force full pass (sparse)", "Run the full frame pass even on sparse "
             "files. Normally skipped because no data = nothing to examine."),
+    ("Force full pass (healthy)", "Run the full freezedetect pass even on "
+            "apparently healthy files (no error signature, high allocation). "
+            "By default, these skip the expensive scan — check this to "
+            "verify them thoroughly."),
     ("CRF (quality)", "Encode quality. LOWER is better quality but a bigger "
             "file. 18 ≈ near-lossless, 23 ≈ standard, 28 ≈ small."),
     ("Preset", "Encoder speed vs size. 'ultrafast' is fastest but bigger; "
@@ -360,6 +364,7 @@ class SalvageGUI:
         self.opts = {
             "fix": "auto",
             "force_pass": False,
+            "force_pass_healthy": False,
             "crf": 20,
             "preset": "veryfast",
             "min_freeze": 2.0,
@@ -528,6 +533,8 @@ class SalvageGUI:
             ("auto", "salvage", "remux", "untrunc", "none"),
             lambda: self.opts["fix"], lambda v: self.opts.__setitem__("fix", v)))
         self._add_toggle(pre.widget, "Force full pass (sparse)", None,
+                         checked=False)
+        self._add_toggle(pre.widget, "Force full pass (healthy)", None,
                          checked=False)
         self.import_btn = tk.Button(
             pre.widget, text="Import", command=self._import_session,
@@ -849,8 +856,10 @@ class SalvageGUI:
         cmd += ["--container", self.opts["container"]]
         cmd += ["--codec", self.opts["codec"]]
         cmd += ["--audio-mode", self.opts["audio"]]
-        if self.opts["force_pass"]:
+        if self.opts.get("force_pass"):
             cmd += ["--force-pass"]
+        if self.opts.get("force_pass_healthy"):
+            cmd += ["--no-quick"]
         cmd += ["--min-freeze", str(self.opts["min_freeze"])]
         # equals-form so a leading '-' (e.g. -60dB) isn't parsed as a flag
         cmd += [f"--noise={self.opts['noise']}"]
