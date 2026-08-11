@@ -494,16 +494,16 @@ class SalvageGUI:
                                   bg="#CC0000", fg="#FFFFFF",
                                   font=(FONT_FAMILY, 12, "bold"),
                                   relief="raised", bd=3, padx=28, pady=6,
-                                  activebackground="#DD0000")
+                                  activebackground="#DD0000",
+                                  state="disabled")
         self.stop_btn.pack(side="top", pady=(4, 0))
-        self.stop_btn.pack_forget()
         self.pause_btn = tk.Button(right, text="⏸  Pause", command=self._pause,
                                    bg="#CC8800", fg="#FFFFFF",
                                    font=(FONT_FAMILY, 12, "bold"),
                                    relief="raised", bd=3, padx=28, pady=6,
-                                   activebackground="#DD9900")
+                                   activebackground="#DD9900",
+                                   state="disabled")
         self.pause_btn.pack(side="top", pady=(4, 0))
-        self.pause_btn.pack_forget()
 
     def _build_source_pane(self, parent):
         box = CategoryBox(parent, " Source ")
@@ -967,8 +967,8 @@ class SalvageGUI:
             return
         self.running = True
         self.run_btn.config(state="disabled")
-        self.stop_btn.pack(side="top", pady=(4, 0))
-        self.pause_btn.pack(side="top", pady=(4, 0))
+        self.stop_btn.config(state="normal")
+        self.pause_btn.config(state="normal")
         self._set_status("Starting...")
         self._report_dir = tempfile.mkdtemp(prefix="vf98_reports_")
         self._log(f"\n--- starting {len(queue)} item(s) ---\n")
@@ -1020,8 +1020,8 @@ class SalvageGUI:
         self._stopping = False
         self.check_btn.config(state="disabled")
         self.run_btn.config(state="disabled")
-        self.stop_btn.pack(side="top", pady=(4, 0))
-        self.pause_btn.pack(side="top", pady=(4, 0))
+        self.stop_btn.config(state="normal")
+        self.pause_btn.config(state="normal")
         # if session was loaded or prior check ran, skip already-checked files
         existing = {p for p in self.source_queue if p in self._check_results}
         check_queue = [p for p in self.source_queue if p not in existing]
@@ -1098,8 +1098,8 @@ class SalvageGUI:
         self.running = False
         self.check_btn.config(state="normal")
         self.run_btn.config(state="normal")
-        self.stop_btn.pack_forget()
-        self.pause_btn.pack_forget()
+        self.stop_btn.config(state="disabled")
+        self.pause_btn.config(state="disabled")
         self.root.after(0, self.progress.pack_forget)
         n = len(self._check_results)
         if n > 0:
@@ -1304,8 +1304,8 @@ class SalvageGUI:
     def _done(self, msg, rows=None):
         self.running = False
         self.run_btn.config(state="normal")
-        self.stop_btn.pack_forget()
-        self.pause_btn.pack_forget()
+        self.stop_btn.config(state="disabled")
+        self.pause_btn.config(state="disabled")
         self._set_status(msg)
         self._log("\n" + msg + "\n")
         self._save_session()
