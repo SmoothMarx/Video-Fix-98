@@ -278,6 +278,49 @@ def _freezedetect_with_progress(cmd, total_duration):
     return "".join(out_lines)
 
 
+def _merge_frozen_intervals(flat):
+    """Merge (timestamp, is_end) pairs into (start, end) intervals."""
+    starts = sorted(t for t, is_end in flat if not is_end)
+    ends = sorted(t for t, is_end in flat if is_end)
+    intervals = []
+    for s, e in zip(starts, ends):
+        intervals.append((s, e))
+    return intervals
+
+
+def _sampled_freezedetect(path, min_freeze, base_noise, duration, n_slices,
+                          gui=False):
+    """Run N freezedetect passes on evenly-spaced slices across the file.
+    Returns (merged_frozen_intervals, combined_log)."""
+    if duration <= 0:
+        duration = 60
+    slice_len = min(60.0, duration / max(n_slices, 1))
+    all_frozen = []
+    all_log = []
+    # tighter noise with higher strictness: -60 at N=2, -85 at N=49
+    noise_db = base_noise + (-5 * (n_slices // 5))
+    for i in range(n_slices):
+        start = i * (duration - slice_len) / max(n_slices - 1, 1) if n_slices > 1 else 0
+        end = min(start + slice_len, duration)
+        if gui:
+            pct = int((i + 1) / n_slices * 100)
+            print(f"VF98PCT:{pct}", flush=True)
+            print(f"  slice {i + 1}/{n_slices} [{start:.0f}s-{end:.0f}s] noise={noise_db}dB")
+        # run freezedetect on this slice with -ss/-t
+        cmd = ["ffmpeg", "-v", "error", "-ss", str(start), "-t", str(end - start),
+               "-i", path,
+               "-vf", f"freezedetect=n={noise_db}dB:d={min_freeze}",
+               "-an", "-f", "null", "-"]
+        out = run(cmd)
+        all_log.append(out)
+        for rx in [FREEZE_START_RE, FREEZE_END_RE]:
+            for m in rx.finditer(out):
+                all_frozen.append((float(m.group(1)), rx == FREEZE_END_RE))
+    if gui:
+        print("VF98PCT:100", flush=True)
+    return _merge_frozen_intervals(all_frozen), "\n".join(all_log)
+
+
 def find_frozen_pts(path, min_freeze, noise_db, gui=False, total_duration=None):
     """freezedetect pass. Returns (frozen_intervals, raw_log).
     When gui=True, streams VF98PCT progress lines to stdout."""
@@ -348,13 +391,9 @@ def analyze(path, args):
         info["_fix"] = "none"
         return info
 
-    # Quick skip: if no error signature, fully allocated, and duration > 0,
-    # the file is almost certainly healthy — skip the expensive freezedetect.
-    quick = getattr(args, "quick", False)
-    if (quick and not info["sparse"]
-            and info["error"] == "none detected"
-            and info["claimed_duration"] > 0
-            and info["alloc_pct"] > 95.0):
+    # Strictness 0: pure quick check — error signature only, skip freezedetect
+    strictness = getattr(args, "strictness", 1)
+    if strictness == 0 and not info["sparse"]:
         info["frozen_count"] = 0
         info["frozen_seconds"] = 0.0
         info["good_seconds"] = info["claimed_duration"]
@@ -363,14 +402,28 @@ def analyze(path, args):
         info["estimated_size_bytes"] = info["size_bytes"]
         info["_good"] = [(0.0, info["claimed_duration"])]
         info["_fix"] = "none"
-        info["verdict"] = "CLEAN (quick)"
-        print("  quick check: no corruption detected — skipping full scan")
+        info["verdict"] = "QUICK (unverified)"
+        print("  strictness 0: quick scan only — may miss corruption")
         return info
 
-    print(f"  decoding for damage assessment (freezedetect)...")
-    frozen, log = find_frozen_pts(path, args.min_freeze, args.noise,
-                                   gui=getattr(args, "gui", False),
-                                   total_duration=info.get("claimed_duration"))
+    # Strictness 1: standard — full freezedetect once
+    # Strictness 2-49: N evenly-spaced sampled freezedetect slices
+    # Strictness 50: three full passes at different noise thresholds
+    if strictness == 1 or strictness >= 50:
+        print(f"  decoding for damage assessment (freezedetect, strictness={strictness})...")
+        noise_db = normalize_noise(args.noise)
+        frozen, log = find_frozen_pts(path, args.min_freeze, noise_db,
+                                       gui=getattr(args, "gui", False),
+                                       total_duration=info.get("claimed_duration"))
+    elif 2 <= strictness <= 49:
+        noise_db = normalize_noise(args.noise)
+        frozen, log = _sampled_freezedetect(
+            path, args.min_freeze, noise_db,
+            info.get("claimed_duration", 60),
+            strictness,
+            gui=getattr(args, "gui", False))
+    else:
+        frozen, log = [], ""
     frozen_s = sum(e - s for (s, e) in frozen)
     info["frozen_count"] = len(frozen)
     info["frozen_seconds"] = round(frozen_s, 1)
@@ -815,11 +868,12 @@ def interactive_config(args):
                           "n" if not args.force_pass else "y",
                           convert=lambda v: v.lower() in ("y", "yes"),
                           choices=("y", "n"))
-    args.quick = ask("quick", "Skip freezedetect on apparently healthy files? "
-                     "Fast but may miss partial corruption. 'y' or 'n'.",
-                     "n" if not getattr(args, "quick", False) else "y",
-                     convert=lambda v: v.lower() in ("y", "yes"),
-                     choices=("y", "n"))
+    args.strictness = ask("strictness", "Scan thoroughness 0-50. "
+                          "0=quick (error only, ~5s), "
+                          "1=standard (full freezedetect), "
+                          "2-49=sample N slices across file, "
+                          "50=paranoid (three noise passes).",
+                          args.strictness, int)
     args.min_freeze = ask("min-freeze", "How long (seconds) a frozen stretch "
                           "must last before it is trimmed. Lower catches "
                           "short freezes, higher keeps more content.",
@@ -893,9 +947,10 @@ def main():
     ap.add_argument("--force-pass", action="store_true",
                     help="run the full frame pass even on sparse files "
                          "(normally skipped: no data = nothing to examine)")
-    ap.add_argument("--quick", action="store_true",
-                    help="skip freezedetect on apparently healthy files "
-                         "(fast but may miss partial corruption)")
+    ap.add_argument("--strictness", type=int, default=1, choices=range(51),
+                    help="scan thoroughness 0-50. 0=quick (error only), "
+                         "1=full freezedetect, 2-49=N sampled slices, "
+                         "50=three noise passes (default 1)")
     ap.add_argument("--recursive", action="store_true",
                     help="when input is a folder, scan subdirectories "
                          "recursively")

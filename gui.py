@@ -363,7 +363,7 @@ class SalvageGUI:
         self.opts = {
             "fix": "auto",
             "force_pass": False,
-            "quick_skip": False,
+            "strictness": 1,
             "crf": 20,
             "preset": "veryfast",
             "min_freeze": 2.0,
@@ -563,8 +563,10 @@ class SalvageGUI:
             lambda: self.opts["fix"], lambda v: self.opts.__setitem__("fix", v)))
         self._add_toggle(pre.widget, "Force full pass (sparse)", None,
                          checked=False)
-        self._add_toggle(pre.widget, "Quick skip (healthy files)", None,
-                         checked=False)
+        self._add_toggle(pre.widget, "Scan strictness",
+                         SpinFactory(lambda: self.opts["strictness"],
+                                     lambda v: self.opts.__setitem__("strictness", int(v)),
+                                     0, 50, inc=1))
         self.import_btn = tk.Button(
             pre.widget, text="Import", command=self._import_session,
             bg=BTNFACE, font=(FONT_FAMILY, 10, "bold"), relief="raised", bd=2, padx=10, pady=2)
@@ -962,8 +964,7 @@ class SalvageGUI:
         cmd += ["--audio-mode", self.opts["audio"]]
         if self.opts.get("force_pass"):
             cmd += ["--force-pass"]
-        if self.opts.get("quick_skip"):
-            cmd += ["--quick"]
+        cmd += ["--strictness", str(self.opts["strictness"])]
         cmd += ["--min-freeze", str(self.opts["min_freeze"])]
         # equals-form so a leading '-' (e.g. -60dB) isn't parsed as a flag
         cmd += [f"--noise={self.opts['noise']}"]
