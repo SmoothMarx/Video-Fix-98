@@ -503,6 +503,9 @@ class SalvageGUI:
                   font=FONT, relief="raised", bd=2, padx=4).pack(side="left")
         tk.Button(row, text="Add Folder...", command=self._add_folder, bg=BTNFACE,
                   font=FONT, relief="raised", bd=2, padx=4).pack(side="left", padx=(4, 0))
+        self.include_subfolders = tk.BooleanVar(value=False)
+        tk.Checkbutton(row, text="Sub-folders", variable=self.include_subfolders,
+                       bg=BG, activebackground=BG, font=FONT).pack(side="left", padx=(6, 0))
 
         self.queue_list = tk.Listbox(w, bg=SUNKEN_BG, relief="sunken", bd=2,
                                       font=("Courier", 10), selectmode="extended")
@@ -774,9 +777,15 @@ class SalvageGUI:
         p = filedialog.askdirectory(title="Add source folder")
         if p:
             try:
-                for name in sorted(os.listdir(p)):
-                    if os.path.splitext(name)[1].lower() in VIDEO_EXTS:
-                        self._queue_add(os.path.join(p, name))
+                if self.include_subfolders.get():
+                    for root, _dirs, files in os.walk(p):
+                        for name in sorted(files):
+                            if os.path.splitext(name)[1].lower() in VIDEO_EXTS:
+                                self._queue_add(os.path.join(root, name))
+                else:
+                    for name in sorted(os.listdir(p)):
+                        if os.path.splitext(name)[1].lower() in VIDEO_EXTS:
+                            self._queue_add(os.path.join(p, name))
             except OSError:
                 messagebox.showerror("Video-Fix-98",
                     f"Could not read folder:\n{p}")
