@@ -625,14 +625,22 @@ def repair_one(path, output_path, args, info):
         from shutil import move as _move
         tmp = output_path + ".tmp_video." + args.container
         _move(output_path, tmp)
+        # build audio trim filter from the same good intervals used for video
+        atrim_parts = [
+            f"atrim={s:.3f}:{e:.3f},asetpts=PTS-STARTPTS"
+            for (s, e) in good
+        ]
+        af = ";".join(atrim_parts)
         mux_cmd = ["ffmpeg", "-v", "error", "-i", tmp, "-i", path,
                    "-map", "0:v", "-map", "1:a?"]
+        if atrim_parts:
+            mux_cmd += ["-af", af]
         if args.audio_mode == "copy":
             mux_cmd += ["-c:a", "copy"]
         else:  # aac
             mux_cmd += ["-c:a", "aac", "-b:a", "128k"]
         mux_cmd += ["-y", output_path]
-        print("  muxing audio...")
+        print("  muxing audio (partial)...")
         if args.gui:
             print("VF98PHASE:muxing", flush=True)
         ok2, o2 = run_with_progress(mux_cmd, info["estimated_duration"], gui=args.gui)
