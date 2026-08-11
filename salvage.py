@@ -288,25 +288,22 @@ def _merge_frozen_intervals(flat):
     return intervals
 
 
-def _sampled_freezedetect(path, min_freeze, base_noise, duration, n_slices,
+def _sampled_freezedetect(path, min_freeze, noise_db, duration, n_slices,
                           gui=False):
-    """Run N freezedetect passes on evenly-spaced slices across the file.
+    """Split the file into N equal segments, run freezedetect on each.
     Returns (merged_frozen_intervals, combined_log)."""
     if duration <= 0:
         duration = 60
-    slice_len = min(60.0, duration / max(n_slices, 1))
+    slice_len = duration / n_slices
     all_frozen = []
     all_log = []
-    # tighter noise with higher strictness: -60 at N=2, -85 at N=49
-    noise_db = base_noise + (-5 * (n_slices // 5))
     for i in range(n_slices):
-        start = i * (duration - slice_len) / max(n_slices - 1, 1) if n_slices > 1 else 0
+        start = i * slice_len
         end = min(start + slice_len, duration)
         if gui:
             pct = int((i + 1) / n_slices * 100)
             print(f"VF98PCT:{pct}", flush=True)
-            print(f"  slice {i + 1}/{n_slices} [{start:.0f}s-{end:.0f}s] noise={noise_db}dB")
-        # run freezedetect on this slice with -ss/-t
+            print(f"  segment {i + 1}/{n_slices} [{start:.0f}s-{end:.0f}s]")
         cmd = ["ffmpeg", "-v", "error", "-ss", str(start), "-t", str(end - start),
                "-i", path,
                "-vf", f"freezedetect=n={noise_db}dB:d={min_freeze}",
