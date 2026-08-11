@@ -422,6 +422,13 @@ class SalvageGUI:
         self.root.destroy()
 
     def _set_icon(self, win):
+        # iconbitmap sets the taskbar icon on Windows (requires .ico)
+        ico = os.path.join(_BUNDLE, "assets", "icon.ico")
+        if os.path.exists(ico) and sys.platform == "win32":
+            try:
+                win.iconbitmap(default=ico)
+            except Exception:
+                pass
         if not os.path.exists(ICON_PATH):
             return
         try:
@@ -515,7 +522,11 @@ class SalvageGUI:
 
         self.queue_list = tk.Listbox(w, bg=SUNKEN_BG, relief="sunken", bd=2,
                                       font=("Courier", 10), selectmode="extended")
-        self.queue_list.pack(fill="both", expand=True, padx=4, pady=2)
+        sb_source = tk.Scrollbar(w, orient="vertical", command=self.queue_list.yview)
+        self.queue_list.configure(yscrollcommand=sb_source.set)
+        self.queue_list.pack(side="left", fill="both", expand=True, padx=(4, 0), pady=2)
+        sb_source.pack(side="right", fill="y", padx=(0, 4), pady=2)
+        self.queue_list.bind("<Delete>", lambda e: self._remove_selected())
 
         row2 = tk.Frame(w, bg=BG)
         row2.pack(fill="x", padx=4, pady=4)
@@ -660,7 +671,10 @@ class SalvageGUI:
 
         self.watch_list = tk.Listbox(w, bg=SUNKEN_BG, relief="sunken", bd=2,
                                      font=("Courier", 10), selectmode="extended")
-        self.watch_list.pack(fill="both", expand=True, padx=4, pady=2)
+        sb_watch = tk.Scrollbar(w, orient="vertical", command=self.watch_list.yview)
+        self.watch_list.configure(yscrollcommand=sb_watch.set)
+        self.watch_list.pack(side="left", fill="both", expand=True, padx=(4, 0), pady=2)
+        sb_watch.pack(side="right", fill="y", padx=(0, 4), pady=2)
         self.watch_count = tk.Label(w, text="0 files", bg=BG, font=FONT, anchor="w")
         self.watch_count.pack(fill="x", padx=6, pady=(0, 4))
 
@@ -1008,11 +1022,8 @@ class SalvageGUI:
         self.run_btn.config(state="disabled")
         self.stop_btn.pack(side="top", pady=(4, 0))
         self.pause_btn.pack(side="top", pady=(4, 0))
-        # if session was loaded, skip already-checked files
+        # if session was loaded or prior check ran, skip already-checked files
         existing = {p for p in self.source_queue if p in self._check_results}
-        self._check_results = {}
-        self._checked_files = set()
-        self._set_status("Checking...")
         check_queue = [p for p in self.source_queue if p not in existing]
         if existing:
             self._log(f"\n{len(existing)} file(s) already checked — skipping\n")
@@ -1020,6 +1031,7 @@ class SalvageGUI:
             self._log("\nAll files already checked.\n")
             self._check_done()
             return
+        self._set_status("Checking...")
         self._log("\n--- checking " + str(len(check_queue)) + " file(s) ---\n")
         self.root.after(0, lambda: self.progress.pack(
             fill="x", padx=4, pady=(4, 4), before=self._bottom))
