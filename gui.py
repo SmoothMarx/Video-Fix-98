@@ -901,6 +901,8 @@ class SalvageGUI:
                 return
         else:
             queue = list(self.source_queue)
+        if not self._confirm_large_batch("run"):
+            return
         self.running = True
         self.run_btn.config(state="disabled")
         self.stop_btn.pack(side="top", pady=(4, 0))
@@ -918,12 +920,28 @@ class SalvageGUI:
             self._log("\n--- STOPPED by user ---\n")
 
     # ------------------------------------------------------- check workflow
+    def _confirm_large_batch(self, mode):
+        """Warn when queueing 20+ files. Returns True to continue."""
+        n = len(self.source_queue)
+        if n < 20:
+            return True
+        per_file = "~5s each (quick)" if mode == "check" else "1-5 min each"
+        est = f"~{n * 5 // 60} min" if mode == "check" else f"~{n // 2}-{n * 5} min"
+        return messagebox.askokcancel(
+            "Video-Fix-98 — Large Batch",
+            f"You have {n} files queued.\n\n"
+            f"Estimated: {est} ({per_file})\n\n"
+            f"Continue?",
+            icon="warning")
+
     def _check_all(self):
         """Run salvage --mode check on every file in the queue."""
         if not self.source_queue:
             messagebox.showerror("Video-Fix-98", "Add source files to the queue first.")
             return
         if self.running:
+            return
+        if not self._confirm_large_batch("check"):
             return
         self.running = True
         self._stopping = False
