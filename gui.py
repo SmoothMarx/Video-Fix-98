@@ -388,6 +388,7 @@ class SalvageGUI:
         self.running = False
         self._stopping = False
         self._paused = False
+        self._current_progress = ""
         self._resizing = False
         self._check_results = {}
         self._checked_files = set()
@@ -487,23 +488,23 @@ class SalvageGUI:
         self.run_btn = tk.Button(right, text="\u25B6  Run", command=self._run,
                                  bg=RUN_GREEN, fg="#FFFFFF",
                                  font=(FONT_FAMILY, 12, "bold"),
-                                 relief="raised", bd=3, padx=28, pady=10,
+                                 relief="raised", bd=3, padx=28, pady=14,
                                  activebackground="#00B000")
-        self.run_btn.pack(side="top")
-        self.stop_btn = tk.Button(right, text="\u25A0  Stop", command=self._stop,
-                                  bg="#CC0000", fg="#FFFFFF",
-                                  font=(FONT_FAMILY, 12, "bold"),
-                                  relief="raised", bd=3, padx=28, pady=6,
-                                  activebackground="#DD0000",
-                                  state="disabled")
-        self.stop_btn.pack(side="top", pady=(4, 0))
+        self.run_btn.pack(side="top", fill="x")
         self.pause_btn = tk.Button(right, text="⏸  Pause", command=self._pause,
                                    bg="#CC8800", fg="#FFFFFF",
                                    font=(FONT_FAMILY, 12, "bold"),
                                    relief="raised", bd=3, padx=28, pady=6,
                                    activebackground="#DD9900",
                                    state="disabled")
-        self.pause_btn.pack(side="top", pady=(4, 0))
+        self.pause_btn.pack(side="top", fill="x", pady=(4, 0))
+        self.stop_btn = tk.Button(right, text="\u25A0  Stop", command=self._stop,
+                                  bg="#CC0000", fg="#FFFFFF",
+                                  font=(FONT_FAMILY, 12, "bold"),
+                                  relief="raised", bd=3, padx=28, pady=6,
+                                  activebackground="#DD0000",
+                                  state="disabled")
+        self.stop_btn.pack(side="top", fill="x", pady=(4, 0))
 
     def _build_source_pane(self, parent):
         box = CategoryBox(parent, " Source ")
@@ -528,13 +529,14 @@ class SalvageGUI:
         sb_source.pack(side="right", fill="y", padx=(0, 4), pady=2)
         self.queue_list.bind("<Delete>", lambda e: self._remove_selected())
 
-        row2 = tk.Frame(w, bg=BG)
-        row2.pack(fill="x", padx=4, pady=4)
-        tk.Button(row2, text="Remove", command=self._remove_selected, bg=BTNFACE,
+        # bottom section: action buttons, separated from listbox
+        bottom_row = tk.Frame(w, bg=BG, bd=0)
+        bottom_row.pack(fill="x", padx=4, pady=4, side="bottom")
+        tk.Button(bottom_row, text="Remove", command=self._remove_selected, bg=BTNFACE,
                   font=(FONT_FAMILY, 10, "bold"), relief="raised", bd=2, padx=10).pack(side="left")
-        tk.Button(row2, text="Clear", command=self._clear_queue, bg=BTNFACE,
+        tk.Button(bottom_row, text="Clear", command=self._clear_queue, bg=BTNFACE,
                   font=(FONT_FAMILY, 10, "bold"), relief="raised", bd=2, padx=10).pack(side="left", padx=(6, 0))
-        self.check_btn = tk.Button(row2, text="Check", command=self._check_all,
+        self.check_btn = tk.Button(bottom_row, text="Check", command=self._check_all,
                                    bg="#00A000", fg="#FFFFFF",
                                    font=(FONT_FAMILY, 10, "bold"), relief="raised", bd=2, padx=10)
         self.check_btn.pack(side="right", padx=(4, 0))
@@ -986,11 +988,12 @@ class SalvageGUI:
         """Pause after current file completes. Toggle to resume."""
         self._paused = not self._paused
         if self._paused:
-            self._log("\n--- PAUSED (will stop after current file) ---\n")
             self.pause_btn.config(text="▶  Resume", bg="#00A000")
+            self._set_status(f"Paused {self._current_progress}")
+            self._log("\n--- PAUSED (will stop after current file) ---\n")
         else:
-            self._log("\n--- RESUMED ---\n")
             self.pause_btn.config(text="⏸  Pause", bg="#CC8800")
+            self._log("\n--- RESUMED ---\n")
 
     # ------------------------------------------------------- check workflow
     def _confirm_large_batch(self, mode):
@@ -1226,8 +1229,9 @@ class SalvageGUI:
         except Exception:
             pass
 
-    def _set_status(self, text):
-        self.status.config(text=text)
+    def _set_status(self, msg):
+        self._current_progress = msg
+        self.status.config(text=msg)
 
     def _worker(self, queue):
         total = len(queue)
