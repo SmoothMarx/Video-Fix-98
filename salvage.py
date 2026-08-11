@@ -74,6 +74,10 @@ ERROR_SIGNATURES = [
     (re.compile(r"Invalid data found", re.I), "invalid data in stream"),
     (re.compile(r"Broken pipe", re.I), "broken stream pipe"),
     (re.compile(r"Error while opening encoder", re.I), "encoder/container mismatch"),
+    (re.compile(r"pts has no value", re.I), "corrupt timestamps (container damage)"),
+    (re.compile(r"dts < pcr", re.I), "PCR/DTS disorder (container damage)"),
+    (re.compile(r"Could not find codec parameters", re.I), "missing codec info (container damage)"),
+    (re.compile(r"invalid dts/pts combination", re.I), "corrupt timestamp data (container damage)"),
 ]
 
 
@@ -402,6 +406,8 @@ def analyze(path, args):
         info["_fix"] = "none"
     elif info["frozen_seconds"] > 0 or "nal" in err or "corrupt" in err:
         info["_fix"] = "salvage"
+    elif "container" in err or "timestamp" in err or "dts" in err:
+        info["_fix"] = "remux"
     else:
         info["_fix"] = "remux"
     info["verdict"] = info.get("error", "CHECKED")
