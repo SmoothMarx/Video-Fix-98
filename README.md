@@ -58,6 +58,23 @@ The GUI runs in a browser via noVNC. Drop files in `input/`, repaired files land
 
 ---
 
+## 🧠 The story: why your corrupt videos "freeze"
+
+When a video file is damaged, the decoder usually doesn't show you garbage —
+it **freezes the last good frame** and repeats it (this is called *error
+concealment*) until it recovers. On top of that, the file's *index* (the
+`moov` atom in MP4s) often **lies** — it claims frames and durations that don't
+actually exist on disk.
+
+That's why a naive repair often produces a file that keeps the full length but
+is full of frozen stretches: **it trusted the lying index.**
+
+Salvage does the opposite. It ignores the index entirely and trusts only the
+**actual decode** — what a player really sees. Every frame is examined
+individually, the frozen stretches are found and trimmed, and the survivors are
+re-timed onto a clean, continuous timeline. The result is smaller, smooth, and
+**every frame in it is real content.**
+
 ## 🔧 Run modes
 
 | Mode | What it does |
