@@ -23,6 +23,7 @@ Usage:
     python3 gui.py
 """
 import sys
+import os
 
 # ---- heartbeat: written as the first executable line to prove that the -----
 # ---- Python interpreter actually started inside the frozen exe -------------
@@ -40,7 +41,6 @@ except Exception:
 import argparse
 import csv
 import json
-import os
 import subprocess
 import sys
 import tempfile
@@ -381,6 +381,7 @@ class SalvageGUI:
             self.out_dir = ""
         self.running = False
         self._stopping = False
+        self._resizing = False
         self._check_results = {}
         self._checked_files = set()
         self._report_dir = tempfile.mkdtemp(prefix="vf98_reports_")
@@ -393,7 +394,6 @@ class SalvageGUI:
 
         # debounced resize — skip layout recalc during drag
         self._resize_job = None
-        self._resizing = False
         def _on_resize(event):
             if not self._resizing:
                 self._resizing = True
