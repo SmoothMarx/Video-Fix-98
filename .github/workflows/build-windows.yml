@@ -67,7 +67,8 @@ jobs:
       - name: Build Video-Fix-98 onedir (no AV false positive)
         run: |
           pyinstaller --clean --onedir --name "Video-Fix-98-NoAV" --add-data "assets;assets" `
-            --add-binary "bin/win/*;." --icon assets/icon.ico --windowed `
+            --add-binary "bin/win/*;." --add-binary "dist/salvage.exe;." `
+            --icon assets/icon.ico --windowed `
             --hidden-import tkinter --hidden-import tkinter.ttk gui.py
           Compress-Archive -Path "dist/Video-Fix-98-NoAV/*" `
             -DestinationPath "dist/Video-Fix-98-NoAV.zip"
